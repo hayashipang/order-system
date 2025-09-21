@@ -215,19 +215,19 @@ initializeDatabase();
 // API Routes
 
 // 登入驗證
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   
-  db.get(
-    'SELECT * FROM users WHERE username = ? AND password = ?',
-    [username, password],
-    (err, user) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query(
+        'SELECT * FROM users WHERE username = $1 AND password = $2',
+        [username, password]
+      );
       
-      if (user) {
+      if (result.rows.length > 0) {
+        const user = result.rows[0];
         res.json({ 
           success: true, 
           user: { id: user.id, username: user.username, role: user.role }
@@ -235,19 +235,53 @@ app.post('/api/login', (req, res) => {
       } else {
         res.status(401).json({ error: '帳號或密碼錯誤' });
       }
+    } else {
+      // SQLite
+      db.get(
+        'SELECT * FROM users WHERE username = ? AND password = ?',
+        [username, password],
+        (err, user) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          
+          if (user) {
+            res.json({ 
+              success: true, 
+              user: { id: user.id, username: user.username, role: user.role }
+            });
+          } else {
+            res.status(401).json({ error: '帳號或密碼錯誤' });
+          }
+        }
+      );
     }
-  );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 取得所有產品列表（包含價格）
-app.get('/api/products', (req, res) => {
-  db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/products', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM products ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增產品
@@ -569,14 +603,25 @@ app.get('/api/orders/export/:date', (req, res) => {
   });
 });
 
-app.get('/api/customers', (req, res) => {
-  db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/customers', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM customers ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增客戶
