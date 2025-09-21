@@ -3,7 +3,6 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
-const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,7 +32,7 @@ console.log('Using SQLite database for stability');
 db = new sqlite3.Database('./orders.db');
 
 // 資料庫初始化函數
-function initializeDatabase() {
+function initializeDatabase(callback) {
   // 使用 SQLite 初始化
   db.serialize(() => {
   // 使用者表
@@ -112,18 +111,19 @@ function initializeDatabase() {
 
   // 不再插入預設測試資料，讓使用者自行新增真實客戶和訂單
   });
+  
   console.log('SQLite 資料庫初始化完成');
+  if (callback) callback();
+  });
 }
 
 // 資料庫初始化狀態
 let dbReady = false;
 
 // 初始化資料庫
-initializeDatabase().then(() => {
+initializeDatabase(() => {
   console.log('資料庫初始化完成');
   dbReady = true;
-}).catch((error) => {
-  console.error('資料庫初始化失敗:', error);
 });
 
 // 資料庫準備檢查中間件
