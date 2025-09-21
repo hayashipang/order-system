@@ -23,8 +23,12 @@ if (process.env.NODE_ENV === 'production') {
 
 // 初始化資料庫
 let db;
-// 暫時使用 SQLite 確保系統正常運作
-db = new sqlite3.Database('./orders.db');
+// 在 Vercel 上使用記憶體資料庫
+if (process.env.NODE_ENV === 'production') {
+  db = new sqlite3.Database(':memory:');
+} else {
+  db = new sqlite3.Database('./orders.db');
+}
 
 // 資料庫初始化函數
 function initializeDatabase() {
