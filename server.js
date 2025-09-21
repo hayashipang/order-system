@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,10 +14,113 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 // 初始化資料庫
-const db = new sqlite3.Database(process.env.NODE_ENV === 'production' ? ':memory:' : './orders.db');
+let db;
+if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+  // 使用 PostgreSQL (Supabase)
+  db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  // 使用 SQLite (本地開發)
+  db = new sqlite3.Database('./orders.db');
+}
 
-// 建立資料表
-db.serialize(() => {
+// 資料庫初始化函數
+async function initializeDatabase() {
+  if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+    // PostgreSQL 初始化
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT DEFAULT 'kitchen',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS customers (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          phone TEXT,
+          address TEXT,
+          source TEXT DEFAULT '一般客戶',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS products (
+          id SERIAL PRIMARY KEY,
+          name TEXT UNIQUE NOT NULL,
+          price DECIMAL(10,2) NOT NULL,
+          description TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS orders (
+          id SERIAL PRIMARY KEY,
+          customer_id INTEGER,
+          order_date DATE NOT NULL,
+          delivery_date DATE NOT NULL,
+          status TEXT DEFAULT 'pending',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (customer_id) REFERENCES customers (id)
+        )
+      `);
+      
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS order_items (
+          id SERIAL PRIMARY KEY,
+          order_id INTEGER,
+          product_name TEXT NOT NULL,
+          quantity INTEGER NOT NULL,
+          unit_price DECIMAL(10,2) NOT NULL,
+          special_notes TEXT,
+          status TEXT DEFAULT 'pending',
+          FOREIGN KEY (order_id) REFERENCES orders (id)
+        )
+      `);
+      
+      // 插入預設資料
+      await db.query(`
+        INSERT INTO users (username, password, role) VALUES 
+        ('admin', 'admin123', 'admin'),
+        ('kitchen', 'kitchen123', 'kitchen')
+        ON CONFLICT (username) DO NOTHING
+      `);
+      
+      const products = [
+        { name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
+        { name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
+        { name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
+        { name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
+        { name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
+        { name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
+        { name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
+        { name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
+      ];
+      
+      for (const product of products) {
+        await db.query(`
+          INSERT INTO products (name, price, description) VALUES ($1, $2, $3)
+          ON CONFLICT (name) DO NOTHING
+        `, [product.name, product.price, product.description]);
+      }
+      
+      console.log('PostgreSQL 資料庫初始化完成');
+    } catch (error) {
+      console.error('PostgreSQL 資料庫初始化失敗:', error);
+    }
+  } else {
+    // SQLite 初始化
+    db.serialize(() => {
   // 使用者表
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +196,13 @@ db.serialize(() => {
   });
 
   // 不再插入預設測試資料，讓使用者自行新增真實客戶和訂單
-});
+    });
+    console.log('SQLite 資料庫初始化完成');
+  }
+}
+
+// 初始化資料庫
+initializeDatabase();
 
 // API Routes
 
