@@ -208,13 +208,30 @@ async function initializeDatabase() {
   console.log('SQLite 資料庫初始化完成');
 }
 
+// 資料庫初始化狀態
+let dbReady = false;
+
 // 初始化資料庫
-initializeDatabase();
+initializeDatabase().then(() => {
+  console.log('資料庫初始化完成');
+  dbReady = true;
+}).catch((error) => {
+  console.error('資料庫初始化失敗:', error);
+});
+
+// 資料庫準備檢查中間件
+const checkDatabaseReady = (req, res, next) => {
+  if (!dbReady) {
+    res.status(503).json({ error: '資料庫尚未準備就緒，請稍後再試' });
+    return;
+  }
+  next();
+};
 
 // API Routes
 
 // 登入驗證
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', checkDatabaseReady, async (req, res) => {
   const { username, password } = req.body;
   
   try {
@@ -262,7 +279,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // 取得所有產品列表（包含價格）
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', checkDatabaseReady, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
       // PostgreSQL
@@ -602,7 +619,7 @@ app.get('/api/orders/export/:date', (req, res) => {
   });
 });
 
-app.get('/api/customers', async (req, res) => {
+app.get('/api/customers', checkDatabaseReady, async (req, res) => {
   try {
     if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
       // PostgreSQL
