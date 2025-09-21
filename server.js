@@ -262,14 +262,25 @@ app.post('/api/login', async (req, res) => {
 });
 
 // 取得所有產品列表（包含價格）
-app.get('/api/products', (req, res) => {
-  db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/products', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM products ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增產品
@@ -591,14 +602,25 @@ app.get('/api/orders/export/:date', (req, res) => {
   });
 });
 
-app.get('/api/customers', (req, res) => {
-  db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/customers', async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM customers ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增客戶
