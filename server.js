@@ -109,9 +109,8 @@ function initializeDatabase() {
   });
 
   // 不再插入預設測試資料，讓使用者自行新增真實客戶和訂單
-    });
-    console.log('SQLite 資料庫初始化完成');
-  }
+  });
+  console.log('SQLite 資料庫初始化完成');
 }
 
 // 初始化資料庫
