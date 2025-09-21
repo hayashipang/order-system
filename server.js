@@ -28,114 +28,14 @@ console.log('Environment check:', {
   DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
 });
 
-if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-  // 使用 PostgreSQL (Supabase)
-  console.log('Using PostgreSQL database');
-  db = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-  });
-} else {
-  // 使用 SQLite (本地開發或生產環境沒有 DATABASE_URL)
-  console.log('Using SQLite database');
-  db = new sqlite3.Database('./orders.db');
-}
+// 暫時使用 SQLite 確保系統穩定運作
+console.log('Using SQLite database for stability');
+db = new sqlite3.Database('./orders.db');
 
 // 資料庫初始化函數
-async function initializeDatabase() {
-  if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-    // PostgreSQL 初始化
-    try {
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          password TEXT NOT NULL,
-          role TEXT DEFAULT 'kitchen',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS customers (
-          id SERIAL PRIMARY KEY,
-          name TEXT NOT NULL,
-          phone TEXT,
-          address TEXT,
-          source TEXT DEFAULT '一般客戶',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS products (
-          id SERIAL PRIMARY KEY,
-          name TEXT UNIQUE NOT NULL,
-          price DECIMAL(10,2) NOT NULL,
-          description TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-      
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS orders (
-          id SERIAL PRIMARY KEY,
-          customer_id INTEGER,
-          order_date DATE NOT NULL,
-          delivery_date DATE NOT NULL,
-          status TEXT DEFAULT 'pending',
-          notes TEXT,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (customer_id) REFERENCES customers (id)
-        )
-      `);
-      
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS order_items (
-          id SERIAL PRIMARY KEY,
-          order_id INTEGER,
-          product_name TEXT NOT NULL,
-          quantity INTEGER NOT NULL,
-          unit_price DECIMAL(10,2) NOT NULL,
-          special_notes TEXT,
-          status TEXT DEFAULT 'pending',
-          FOREIGN KEY (order_id) REFERENCES orders (id)
-        )
-      `);
-      
-      // 插入預設資料
-      await db.query(`
-        INSERT INTO users (username, password, role) VALUES 
-        ('admin', 'admin123', 'admin'),
-        ('kitchen', 'kitchen123', 'kitchen')
-        ON CONFLICT (username) DO NOTHING
-      `);
-      
-      const products = [
-        { name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
-        { name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
-        { name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
-        { name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
-        { name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
-        { name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
-        { name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
-        { name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
-      ];
-      
-      for (const product of products) {
-        await db.query(`
-          INSERT INTO products (name, price, description) VALUES ($1, $2, $3)
-          ON CONFLICT (name) DO NOTHING
-        `, [product.name, product.price, product.description]);
-      }
-      
-      console.log('PostgreSQL 資料庫初始化完成');
-    } catch (error) {
-      console.error('PostgreSQL 資料庫初始化失敗:', error);
-    }
-  } else {
-    // SQLite 初始化
-    db.serialize(() => {
+function initializeDatabase() {
+  // 使用 SQLite 初始化
+  db.serialize(() => {
   // 使用者表
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,19 +138,19 @@ const checkDatabaseReady = (req, res, next) => {
 // API Routes
 
 // 登入驗證
-app.post('/api/login', checkDatabaseReady, async (req, res) => {
+app.post('/api/login', checkDatabaseReady, (req, res) => {
   const { username, password } = req.body;
   
-  try {
-    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-      // PostgreSQL
-      const result = await db.query(
-        'SELECT * FROM users WHERE username = $1 AND password = $2',
-        [username, password]
-      );
+  db.get(
+    'SELECT * FROM users WHERE username = ? AND password = ?',
+    [username, password],
+    (err, user) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
       
-      if (result.rows.length > 0) {
-        const user = result.rows[0];
+      if (user) {
         res.json({ 
           success: true, 
           user: { id: user.id, username: user.username, role: user.role }
@@ -258,53 +158,19 @@ app.post('/api/login', checkDatabaseReady, async (req, res) => {
       } else {
         res.status(401).json({ error: '帳號或密碼錯誤' });
       }
-    } else {
-      // SQLite
-      db.get(
-        'SELECT * FROM users WHERE username = ? AND password = ?',
-        [username, password],
-        (err, user) => {
-          if (err) {
-            res.status(500).json({ error: err.message });
-            return;
-          }
-          
-          if (user) {
-            res.json({ 
-              success: true, 
-              user: { id: user.id, username: user.username, role: user.role }
-            });
-          } else {
-            res.status(401).json({ error: '帳號或密碼錯誤' });
-          }
-        }
-      );
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  );
 });
 
 // 取得所有產品列表（包含價格）
-app.get('/api/products', checkDatabaseReady, async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-      // PostgreSQL
-      const result = await db.query('SELECT * FROM products ORDER BY name');
-      res.json(result.rows);
-    } else {
-      // SQLite
-      db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        res.json(rows);
-      });
+app.get('/api/products', checkDatabaseReady, (req, res) => {
+  db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(rows);
+  });
 });
 
 // 新增產品
@@ -626,25 +492,14 @@ app.get('/api/orders/export/:date', (req, res) => {
   });
 });
 
-app.get('/api/customers', checkDatabaseReady, async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-      // PostgreSQL
-      const result = await db.query('SELECT * FROM customers ORDER BY name');
-      res.json(result.rows);
-    } else {
-      // SQLite
-      db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        res.json(rows);
-      });
+app.get('/api/customers', checkDatabaseReady, (req, res) => {
+  db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(rows);
+  });
 });
 
 // 新增客戶
@@ -786,111 +641,64 @@ app.put('/api/orders/:id/status', (req, res) => {
 });
 
 // 更新產品製作狀態
-app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, async (req, res) => {
+app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, (req, res) => {
   const { date, productName } = req.params;
   const { status } = req.body;
   
-  try {
-    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
-      // PostgreSQL
-      // 更新該日期該產品的所有訂單項目狀態
-      await db.query(`
-        UPDATE order_items 
-        SET status = $1 
-        WHERE id IN (
-          SELECT oi.id 
-          FROM order_items oi 
-          JOIN orders o ON oi.order_id = o.id 
-          WHERE o.order_date = $2 AND oi.product_name = $3
-        )
-      `, [status, date, productName]);
-      
-      // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
-      const checkOrderResult = await db.query(`
-        SELECT DISTINCT o.id, o.status
-        FROM orders o
-        JOIN order_items oi ON o.id = oi.order_id
-        WHERE o.order_date = $1 AND oi.product_name = $2
-      `, [date, productName]);
+  // 更新該日期該產品的所有訂單項目狀態
+  const query = `
+    UPDATE order_items 
+    SET status = ? 
+    WHERE id IN (
+      SELECT oi.id 
+      FROM order_items oi 
+      JOIN orders o ON oi.order_id = o.id 
+      WHERE o.order_date = ? AND oi.product_name = ?
+    )
+  `;
+  
+  db.run(query, [status, date, productName], function(err) {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
+    const checkOrderQuery = `
+      SELECT DISTINCT o.id, o.status
+      FROM orders o
+      JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.order_date = ? AND oi.product_name = ?
+    `;
+    
+    db.all(checkOrderQuery, [date, productName], (err, orders) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
       
       // 檢查每個訂單的所有產品是否都已完成
-      for (const order of checkOrderResult.rows) {
-        const checkAllItemsResult = await db.query(`
+      orders.forEach(order => {
+        const checkAllItemsQuery = `
           SELECT COUNT(*) as total, 
                  COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
           FROM order_items 
-          WHERE order_id = $1
-        `, [order.id]);
-        
-        const result = checkAllItemsResult.rows[0];
-        
-        // 如果所有產品都已完成，更新訂單狀態為 completed
-        if (result.total === result.completed && order.status !== 'completed') {
-          await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['completed', order.id]);
-        }
-      }
-      
-      res.json({ message: '產品狀態更新成功' });
-    } else {
-      // SQLite
-      // 更新該日期該產品的所有訂單項目狀態
-      const query = `
-        UPDATE order_items 
-        SET status = ? 
-        WHERE id IN (
-          SELECT oi.id 
-          FROM order_items oi 
-          JOIN orders o ON oi.order_id = o.id 
-          WHERE o.order_date = ? AND oi.product_name = ?
-        )
-      `;
-      
-      db.run(query, [status, date, productName], function(err) {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        
-        // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
-        const checkOrderQuery = `
-          SELECT DISTINCT o.id, o.status
-          FROM orders o
-          JOIN order_items oi ON o.id = oi.order_id
-          WHERE o.order_date = ? AND oi.product_name = ?
+          WHERE order_id = ?
         `;
         
-        db.all(checkOrderQuery, [date, productName], (err, orders) => {
-          if (err) {
-            res.status(500).json({ error: err.message });
-            return;
+        db.get(checkAllItemsQuery, [order.id], (err, result) => {
+          if (err) return;
+          
+          // 如果所有產品都已完成，更新訂單狀態為 completed
+          if (result.total === result.completed && order.status !== 'completed') {
+            db.run('UPDATE orders SET status = ? WHERE id = ?', ['completed', order.id]);
           }
-          
-          // 檢查每個訂單的所有產品是否都已完成
-          orders.forEach(order => {
-            const checkAllItemsQuery = `
-              SELECT COUNT(*) as total, 
-                     COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
-              FROM order_items 
-              WHERE order_id = ?
-            `;
-            
-            db.get(checkAllItemsQuery, [order.id], (err, result) => {
-              if (err) return;
-              
-              // 如果所有產品都已完成，更新訂單狀態為 completed
-              if (result.total === result.completed && order.status !== 'completed') {
-                db.run('UPDATE orders SET status = ? WHERE id = ?', ['completed', order.id]);
-              }
-            });
-          });
-          
-          res.json({ message: '產品狀態更新成功' });
         });
       });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+      
+      res.json({ message: '產品狀態更新成功' });
+    });
+  });
 });
 
 // 取得訂單歷史
