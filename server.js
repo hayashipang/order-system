@@ -665,21 +665,18 @@ app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady,
       
       // 檢查每個訂單的所有產品是否都已完成
       orders.forEach(order => {
-        const checkAllItemsQuery = `
-          SELECT COUNT(*) as total, 
-                 COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
-          FROM order_items 
-          WHERE order_id = ?
-        `;
+        // 直接使用 JavaScript 計算
+        const orderItems = db.order_items.filter(item => item.order_id === order.id);
+        const total = orderItems.length;
+        const completed = orderItems.filter(item => item.status === 'completed').length;
         
-        db.get(checkAllItemsQuery, [order.id], (err, result) => {
-          if (err) return;
-          
-          // 如果所有產品都已完成，更新訂單狀態為 completed
-          if (result.total === result.completed && order.status !== 'completed') {
-            db.run('UPDATE orders SET status = ? WHERE id = ?', ['completed', order.id]);
+        // 如果所有產品都已完成，更新訂單狀態為 completed
+        if (total === completed && order.status !== 'completed') {
+          const orderIndex = db.orders.findIndex(o => o.id === order.id);
+          if (orderIndex !== -1) {
+            db.orders[orderIndex].status = 'completed';
           }
-        });
+        }
       });
       
       res.json({ message: '產品狀態更新成功' });
