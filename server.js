@@ -13,7 +13,7 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 // 初始化資料庫
-const db = new sqlite3.Database('./orders.db');
+const db = new sqlite3.Database(process.env.NODE_ENV === 'production' ? ':memory:' : './orders.db');
 
 // 建立資料表
 db.serialize(() => {
