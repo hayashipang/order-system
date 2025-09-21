@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,93 +27,94 @@ console.log('Environment check:', {
 });
 
 // 使用記憶體資料庫確保系統穩定運作
-console.log('Using SQLite in-memory database for stability');
-db = new sqlite3.Database(':memory:');
+console.log('Using in-memory database for stability');
+
+// 創建記憶體資料庫
+const db = {
+  users: [
+    { id: 1, username: 'admin', password: 'admin123', role: 'admin' },
+    { id: 2, username: 'kitchen', password: 'kitchen123', role: 'kitchen' }
+  ],
+  customers: [],
+  products: [
+    { id: 1, name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
+    { id: 2, name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
+    { id: 3, name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
+    { id: 4, name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
+    { id: 5, name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
+    { id: 6, name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
+    { id: 7, name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
+    { id: 8, name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
+  ],
+  orders: [],
+  order_items: []
+};
+
+// 模擬 SQLite 方法
+db.get = (query, params, callback) => {
+  // 簡單的查詢處理
+  if (query.includes('users') && query.includes('username')) {
+    const user = db.users.find(u => u.username === params[0] && u.password === params[1]);
+    callback(null, user || null);
+  } else {
+    callback(null, null);
+  }
+};
+
+db.all = (query, params, callback) => {
+  if (query.includes('products')) {
+    callback(null, db.products);
+  } else if (query.includes('customers')) {
+    callback(null, db.customers);
+  } else {
+    callback(null, []);
+  }
+};
+
+db.run = (query, params, callback) => {
+  // 簡單的插入處理
+  if (query.includes('INSERT INTO customers')) {
+    const newCustomer = {
+      id: db.customers.length + 1,
+      name: params[0],
+      phone: params[1],
+      address: params[2],
+      source: params[3] || '一般客戶'
+    };
+    db.customers.push(newCustomer);
+    if (callback) callback(null, { lastID: newCustomer.id });
+  } else if (query.includes('INSERT INTO orders')) {
+    const newOrder = {
+      id: db.orders.length + 1,
+      customer_id: params[0],
+      order_date: params[1],
+      delivery_date: params[2],
+      status: 'pending',
+      notes: params[4]
+    };
+    db.orders.push(newOrder);
+    if (callback) callback(null, { lastID: newOrder.id });
+  } else if (query.includes('INSERT INTO order_items')) {
+    const newItem = {
+      id: db.order_items.length + 1,
+      order_id: params[0],
+      product_name: params[1],
+      quantity: params[2],
+      unit_price: params[3],
+      special_notes: params[4],
+      status: 'pending'
+    };
+    db.order_items.push(newItem);
+    if (callback) callback(null, { lastID: newItem.id });
+  } else {
+    if (callback) callback(null, {});
+  }
+};
 
 // 資料庫初始化函數
 function initializeDatabase(callback) {
-  // 使用 SQLite 初始化
-  db.serialize(() => {
-  // 使用者表
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT DEFAULT 'kitchen',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // 客戶表
-  db.run(`CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    phone TEXT,
-    address TEXT,
-    source TEXT DEFAULT '一般客戶',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // 產品表
-  db.run(`CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
-    description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // 訂單表
-  db.run(`CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    order_date DATE NOT NULL,
-    delivery_date DATE NOT NULL,
-    status TEXT DEFAULT 'pending',
-    notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (customer_id) REFERENCES customers (id)
-  )`);
-
-  // 訂單明細表
-  db.run(`CREATE TABLE IF NOT EXISTS order_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER,
-    product_name TEXT NOT NULL,
-    quantity INTEGER NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL,
-    special_notes TEXT,
-    status TEXT DEFAULT 'pending',
-    FOREIGN KEY (order_id) REFERENCES orders (id)
-  )`);
-
-  // 插入預設使用者資料
-  db.run(`INSERT OR IGNORE INTO users (id, username, password, role) VALUES 
-    (1, 'admin', 'admin123', 'admin'),
-    (2, 'kitchen', 'kitchen123', 'kitchen')`);
-
-  // 插入預設產品資料
-  const products = [
-    { name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
-    { name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
-    { name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
-    { name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
-    { name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
-    { name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
-    { name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
-    { name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
-  ];
-
-  products.forEach(product => {
-    db.run(`INSERT OR IGNORE INTO products (name, price, description) VALUES (?, ?, ?)`, 
-      [product.name, product.price, product.description]);
-  });
-
-  // 不再插入預設測試資料，讓使用者自行新增真實客戶和訂單
-  });
-  
-  console.log('SQLite 資料庫初始化完成');
+  console.log('記憶體資料庫初始化完成');
   if (callback) callback();
-  });
 }
 
 // 資料庫初始化狀態
