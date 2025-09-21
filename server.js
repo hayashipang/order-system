@@ -23,14 +23,21 @@ if (process.env.NODE_ENV === 'production') {
 
 // 初始化資料庫
 let db;
+console.log('Environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
+});
+
 if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
   // 使用 PostgreSQL (Supabase)
+  console.log('Using PostgreSQL database');
   db = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
 } else {
-  // 使用 SQLite (本地開發)
+  // 使用 SQLite (本地開發或生產環境沒有 DATABASE_URL)
+  console.log('Using SQLite database');
   db = new sqlite3.Database('./orders.db');
 }
 
