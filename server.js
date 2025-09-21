@@ -706,6 +706,21 @@ app.get('/api/orders/history', (req, res) => {
   });
 });
 
+// 根路徑回應
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '訂單管理系統 API 運行中！', 
+    version: '1.0.0',
+    endpoints: [
+      'GET /api/products - 取得產品列表',
+      'GET /api/customers - 取得客戶列表',
+      'GET /api/kitchen/production/:date - 取得廚房製作清單',
+      'GET /api/orders/customers/:date - 取得客戶訂單清單',
+      'POST /api/login - 使用者登入'
+    ]
+  });
+});
+
 // 服務靜態文件
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
