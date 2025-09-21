@@ -27,9 +27,9 @@ console.log('Environment check:', {
   DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET'
 });
 
-// 暫時使用 SQLite 確保系統穩定運作
-console.log('Using SQLite database for stability');
-db = new sqlite3.Database('./orders.db');
+// 使用記憶體資料庫確保系統穩定運作
+console.log('Using SQLite in-memory database for stability');
+db = new sqlite3.Database(':memory:');
 
 // 資料庫初始化函數
 function initializeDatabase(callback) {
