@@ -11,7 +11,15 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'client/build')));
+
+// 靜態檔案處理
+if (process.env.NODE_ENV === 'production') {
+  // 在 Vercel 上，靜態檔案由 Vercel 處理
+  app.use(express.static(path.join(__dirname, 'client/build')));
+} else {
+  // 本地開發
+  app.use(express.static(path.join(__dirname, 'client/build')));
+}
 
 // 初始化資料庫
 let db;
