@@ -141,36 +141,22 @@ const checkDatabaseReady = (req, res, next) => {
 app.post('/api/login', checkDatabaseReady, (req, res) => {
   const { username, password } = req.body;
   
-  db.get(
-    'SELECT * FROM users WHERE username = ? AND password = ?',
-    [username, password],
-    (err, user) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      
-      if (user) {
-        res.json({ 
-          success: true, 
-          user: { id: user.id, username: user.username, role: user.role }
-        });
-      } else {
-        res.status(401).json({ error: '帳號或密碼錯誤' });
-      }
-    }
-  );
+  // 直接查找用戶
+  const user = db.users.find(u => u.username === username && u.password === password);
+  
+  if (user) {
+    res.json({ 
+      success: true, 
+      user: { id: user.id, username: user.username, role: user.role }
+    });
+  } else {
+    res.status(401).json({ error: '帳號或密碼錯誤' });
+  }
 });
 
 // 取得所有產品列表（包含價格）
 app.get('/api/products', checkDatabaseReady, (req, res) => {
-  db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  res.json(db.products);
 });
 
 // 新增產品
