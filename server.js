@@ -279,14 +279,25 @@ app.post('/api/login', checkDatabaseReady, async (req, res) => {
 });
 
 // 取得所有產品列表（包含價格）
-app.get('/api/products', checkDatabaseReady, (req, res) => {
-  db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/products', checkDatabaseReady, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM products ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM products ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增產品
@@ -608,14 +619,25 @@ app.get('/api/orders/export/:date', (req, res) => {
   });
 });
 
-app.get('/api/customers', checkDatabaseReady, (req, res) => {
-  db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
+app.get('/api/customers', checkDatabaseReady, async (req, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      const result = await db.query('SELECT * FROM customers ORDER BY name');
+      res.json(result.rows);
+    } else {
+      // SQLite
+      db.all('SELECT * FROM customers ORDER BY name', (err, rows) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        res.json(rows);
+      });
     }
-    res.json(rows);
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增客戶
@@ -757,64 +779,111 @@ app.put('/api/orders/:id/status', (req, res) => {
 });
 
 // 更新產品製作狀態
-app.put('/api/kitchen/production/:date/:productName/status', (req, res) => {
+app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, async (req, res) => {
   const { date, productName } = req.params;
   const { status } = req.body;
   
-  // 更新該日期該產品的所有訂單項目狀態
-  const query = `
-    UPDATE order_items 
-    SET status = ? 
-    WHERE id IN (
-      SELECT oi.id 
-      FROM order_items oi 
-      JOIN orders o ON oi.order_id = o.id 
-      WHERE o.order_date = ? AND oi.product_name = ?
-    )
-  `;
-  
-  db.run(query, [status, date, productName], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    
-    // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
-    const checkOrderQuery = `
-      SELECT DISTINCT o.id, o.status
-      FROM orders o
-      JOIN order_items oi ON o.id = oi.order_id
-      WHERE o.order_date = ? AND oi.product_name = ?
-    `;
-    
-    db.all(checkOrderQuery, [date, productName], (err, orders) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+      // PostgreSQL
+      // 更新該日期該產品的所有訂單項目狀態
+      await db.query(`
+        UPDATE order_items 
+        SET status = $1 
+        WHERE id IN (
+          SELECT oi.id 
+          FROM order_items oi 
+          JOIN orders o ON oi.order_id = o.id 
+          WHERE o.order_date = $2 AND oi.product_name = $3
+        )
+      `, [status, date, productName]);
+      
+      // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
+      const checkOrderResult = await db.query(`
+        SELECT DISTINCT o.id, o.status
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        WHERE o.order_date = $1 AND oi.product_name = $2
+      `, [date, productName]);
       
       // 檢查每個訂單的所有產品是否都已完成
-      orders.forEach(order => {
-        const checkAllItemsQuery = `
+      for (const order of checkOrderResult.rows) {
+        const checkAllItemsResult = await db.query(`
           SELECT COUNT(*) as total, 
                  COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
           FROM order_items 
-          WHERE order_id = ?
-        `;
+          WHERE order_id = $1
+        `, [order.id]);
         
-        db.get(checkAllItemsQuery, [order.id], (err, result) => {
-          if (err) return;
-          
-          // 如果所有產品都已完成，更新訂單狀態為 completed
-          if (result.total === result.completed && order.status !== 'completed') {
-            db.run('UPDATE orders SET status = ? WHERE id = ?', ['completed', order.id]);
-          }
-        });
-      });
+        const result = checkAllItemsResult.rows[0];
+        
+        // 如果所有產品都已完成，更新訂單狀態為 completed
+        if (result.total === result.completed && order.status !== 'completed') {
+          await db.query('UPDATE orders SET status = $1 WHERE id = $2', ['completed', order.id]);
+        }
+      }
       
       res.json({ message: '產品狀態更新成功' });
-    });
-  });
+    } else {
+      // SQLite
+      // 更新該日期該產品的所有訂單項目狀態
+      const query = `
+        UPDATE order_items 
+        SET status = ? 
+        WHERE id IN (
+          SELECT oi.id 
+          FROM order_items oi 
+          JOIN orders o ON oi.order_id = o.id 
+          WHERE o.order_date = ? AND oi.product_name = ?
+        )
+      `;
+      
+      db.run(query, [status, date, productName], function(err) {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+        
+        // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
+        const checkOrderQuery = `
+          SELECT DISTINCT o.id, o.status
+          FROM orders o
+          JOIN order_items oi ON o.id = oi.order_id
+          WHERE o.order_date = ? AND oi.product_name = ?
+        `;
+        
+        db.all(checkOrderQuery, [date, productName], (err, orders) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          
+          // 檢查每個訂單的所有產品是否都已完成
+          orders.forEach(order => {
+            const checkAllItemsQuery = `
+              SELECT COUNT(*) as total, 
+                     COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed
+              FROM order_items 
+              WHERE order_id = ?
+            `;
+            
+            db.get(checkAllItemsQuery, [order.id], (err, result) => {
+              if (err) return;
+              
+              // 如果所有產品都已完成，更新訂單狀態為 completed
+              if (result.total === result.completed && order.status !== 'completed') {
+                db.run('UPDATE orders SET status = ? WHERE id = ?', ['completed', order.id]);
+              }
+            });
+          });
+          
+          res.json({ message: '產品狀態更新成功' });
+        });
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 取得訂單歷史
