@@ -2,7 +2,7 @@
 const config = {
   // API 基礎 URL
   apiUrl: process.env.NODE_ENV === 'production' 
-    ? process.env.REACT_APP_API_URL || 'https://your-backend-url.herokuapp.com'
+    ? process.env.REACT_APP_API_URL || window.location.origin
     : 'http://localhost:3000',
   
   // 應用程式設定

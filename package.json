@@ -10,7 +10,8 @@
     "install-client": "cd client && npm install",
     "heroku-postbuild": "npm run install-client && npm run build",
     "vercel-build": "cd client && npm install && npm run build",
-    "postinstall": "cd client && npm install"
+    "postinstall": "cd client && npm install",
+    "railway-build": "npm run install-client && npm run build"
   },
   "keywords": [
     "order-management",
