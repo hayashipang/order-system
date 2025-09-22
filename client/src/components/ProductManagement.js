@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
+import { getLocalData } from '../utils/localStorage';
 
 const ProductManagement = () => {
   const [products, setProducts] = useState([]);
@@ -25,9 +26,8 @@ const ProductManagement = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用靜態資料而不是 API
-      const response = await fetch('/data.json');
-      const data = await response.json();
+      // 使用本地存儲數據
+      const data = getLocalData();
       setProducts(data.products);
     } catch (err) {
       setError('載入產品列表失敗: ' + err.message);

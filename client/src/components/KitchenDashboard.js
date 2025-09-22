@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
+import { getLocalData } from '../utils/localStorage';
 
 const KitchenDashboard = () => {
   const [productionList, setProductionList] = useState([]);
@@ -15,12 +16,11 @@ const KitchenDashboard = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用靜態資料而不是 API
-      const response = await fetch('/data.json');
-      const data = await response.json();
+      // 使用本地存儲數據
+      const data = getLocalData();
       
-      // 模擬製作清單資料
-      const mockProductionList = data.order_items.map(item => ({
+      // 生成製作清單資料
+      const productionList = data.order_items.map(item => ({
         product_name: item.product_name,
         total_quantity: item.quantity,
         unit_price: item.unit_price,
@@ -34,10 +34,9 @@ const KitchenDashboard = () => {
         completed_count: item.status === 'completed' ? 1 : 0
       }));
       
-      setProductionList(mockProductionList);
+      setProductionList(productionList);
     } catch (err) {
       setError('載入製作清單失敗: ' + err.message);
-      // 如果載入失敗，使用預設資料
       setProductionList([]);
     } finally {
       setLoading(false);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
+import { getLocalData } from '../utils/localStorage';
 
 const CustomerOrders = () => {
   const [customerOrders, setCustomerOrders] = useState([]);
@@ -15,12 +16,11 @@ const CustomerOrders = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用靜態資料而不是 API
-      const response = await fetch('/data.json');
-      const data = await response.json();
+      // 使用本地存儲數據
+      const data = getLocalData();
       
-      // 模擬客戶訂單資料
-      const mockCustomerOrders = data.customers.map(customer => ({
+      // 生成客戶訂單資料
+      const customerOrders = data.customers.map(customer => ({
         customer_id: customer.id,
         customer_name: customer.name,
         phone: customer.phone,
@@ -42,8 +42,8 @@ const CustomerOrders = () => {
         all_items_completed: false
       }));
       
-      setCustomerOrders(mockCustomerOrders);
-      setTotalDailyAmount(mockCustomerOrders.reduce((sum, order) => sum + order.customer_total, 0));
+      setCustomerOrders(customerOrders);
+      setTotalDailyAmount(customerOrders.reduce((sum, order) => sum + order.customer_total, 0));
     } catch (err) {
       setError('載入客戶訂單失敗: ' + err.message);
       setCustomerOrders([]);
