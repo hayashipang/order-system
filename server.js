@@ -210,12 +210,22 @@ app.get('/api/kitchen/production/:date', (req, res) => {
   const { date } = req.params;
   
   try {
-    // 取得指定日期的訂單
-    const orders = db.orders.filter(order => order.order_date === date);
+    console.log('請求製作清單日期:', date);
+    console.log('所有訂單:', db.orders);
+    
+    // 取得指定日期的訂單（支援多種日期格式）
+    const orders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+      const requestDate = new Date(date).toISOString().split('T')[0];
+      return orderDate === requestDate || order.order_date === date;
+    });
+    
+    console.log('匹配的訂單:', orders);
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
     const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    console.log('訂單項目:', orderItems);
     
     // 按產品名稱和單價分組統計
     const productStats = {};
@@ -262,12 +272,22 @@ app.get('/api/orders/customers/:date', (req, res) => {
   const { date } = req.params;
   
   try {
-    // 取得指定日期的訂單
-    const orders = db.orders.filter(order => order.order_date === date);
+    console.log('請求客戶訂單日期:', date);
+    console.log('所有訂單:', db.orders);
+    
+    // 取得指定日期的訂單（支援多種日期格式）
+    const orders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+      const requestDate = new Date(date).toISOString().split('T')[0];
+      return orderDate === requestDate || order.order_date === date;
+    });
+    
+    console.log('匹配的訂單:', orders);
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
     const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    console.log('訂單項目:', orderItems);
     
     // 按客戶分組並計算金額
     const groupedOrders = {};
@@ -684,6 +704,63 @@ app.get('/api/orders/history', (req, res) => {
   }
 });
 
+// 取得週統計數據
+app.get('/api/orders/weekly/:startDate', (req, res) => {
+  const { startDate } = req.params;
+  
+  try {
+    console.log('請求週統計開始日期:', startDate);
+    
+    // 計算一週的日期範圍
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    
+    console.log('週統計日期範圍:', start.toISOString().split('T')[0], '到', end.toISOString().split('T')[0]);
+    
+    // 取得這個日期範圍內的所有訂單
+    const orders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date);
+      return orderDate >= start && orderDate <= end;
+    });
+    
+    console.log('週統計匹配的訂單:', orders);
+    const orderIds = orders.map(order => order.id);
+    
+    // 取得這些訂單的項目
+    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    console.log('週統計訂單項目:', orderItems);
+    
+    // 按日期和產品統計
+    const weeklyStats = {};
+    
+    orders.forEach(order => {
+      const date = order.order_date;
+      if (!weeklyStats[date]) {
+        weeklyStats[date] = {};
+      }
+      
+      const items = orderItems.filter(item => item.order_id === order.id);
+      items.forEach(item => {
+        if (!weeklyStats[date][item.product_name]) {
+          weeklyStats[date][item.product_name] = {
+            product_name: item.product_name,
+            total_quantity: 0,
+            unit_price: item.unit_price,
+            total_amount: 0
+          };
+        }
+        weeklyStats[date][item.product_name].total_quantity += item.quantity;
+        weeklyStats[date][item.product_name].total_amount += item.quantity * item.unit_price;
+      });
+    });
+    
+    res.json(weeklyStats);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 根路徑回應
 app.get('/', (req, res) => {
   res.json({ 
@@ -694,6 +771,7 @@ app.get('/', (req, res) => {
       'GET /api/customers - 取得客戶列表',
       'GET /api/kitchen/production/:date - 取得廚房製作清單',
       'GET /api/orders/customers/:date - 取得客戶訂單清單',
+      'GET /api/orders/weekly/:startDate - 取得週統計數據',
       'POST /api/login - 使用者登入'
     ]
   });
