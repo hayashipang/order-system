@@ -16,14 +16,23 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      const response = await axios.post(`${config.apiUrl}/api/login`, formData);
-      if (response.data.success) {
-        onLogin(response.data.user);
+      // 使用靜態驗證而不是 API
+      const validUsers = [
+        { id: 1, username: 'admin', password: 'admin123', role: 'admin' },
+        { id: 2, username: 'kitchen', password: 'kitchen123', role: 'kitchen' }
+      ];
+      
+      const user = validUsers.find(u => 
+        u.username === formData.username && u.password === formData.password
+      );
+      
+      if (user) {
+        onLogin({ id: user.id, username: user.username, role: user.role });
       } else {
-        setError('登入失敗');
+        setError('帳號或密碼錯誤');
       }
     } catch (err) {
-      setError(err.response?.data?.error || '登入失敗');
+      setError('登入失敗');
     } finally {
       setLoading(false);
     }

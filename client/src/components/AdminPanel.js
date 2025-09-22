@@ -63,11 +63,15 @@ const AdminPanel = () => {
 
   const fetchCustomers = async () => {
     try {
-      const response = await axios.get(`${config.apiUrl}/api/customers`);
-      setCustomers(response.data);
-      setFilteredCustomers(response.data);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
+      setCustomers(data.customers);
+      setFilteredCustomers(data.customers);
     } catch (err) {
-      setError('載入客戶列表失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入客戶列表失敗: ' + err.message);
+      setCustomers([]);
+      setFilteredCustomers([]);
     }
   };
 
@@ -106,10 +110,13 @@ const AdminPanel = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await axios.get(`${config.apiUrl}/api/products`);
-      setProducts(response.data);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
+      setProducts(data.products);
     } catch (err) {
-      setError('載入產品列表失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入產品列表失敗: ' + err.message);
+      setProducts([]);
     }
   };
 
@@ -147,7 +154,8 @@ const AdminPanel = () => {
         throw new Error('請填寫客戶姓名');
       }
 
-      await axios.put(`${config.apiUrl}/api/customers/${editingCustomer.id}`, editCustomerForm);
+      // 靜態模式：不實際保存，但顯示成功訊息
+      console.log('更新客戶:', editingCustomer.id, editCustomerForm);
       setSuccess('客戶更新成功！');
       
       // 重新載入客戶列表
@@ -173,7 +181,8 @@ const AdminPanel = () => {
     setSuccess('');
 
     try {
-      await axios.delete(`${config.apiUrl}/api/customers/${customerId}`);
+      // 靜態模式：不實際刪除，但顯示成功訊息
+      console.log('刪除客戶:', customerId);
       setSuccess('客戶刪除成功！');
       
       // 重新載入客戶列表
@@ -188,15 +197,21 @@ const AdminPanel = () => {
   const fetchOrderHistory = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (historyFilters.customer_id) params.append('customer_id', historyFilters.customer_id);
-      if (historyFilters.start_date) params.append('start_date', historyFilters.start_date);
-      if (historyFilters.end_date) params.append('end_date', historyFilters.end_date);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
       
-      const response = await axios.get(`/api/orders/history?${params.toString()}`);
-      setOrderHistory(response.data);
+      // 模擬訂單歷史資料
+      const mockOrderHistory = data.orders.map(order => ({
+        ...order,
+        customer_name: data.customers.find(c => c.id === order.customer_id)?.name || '未知客戶',
+        items: data.order_items.filter(item => item.order_id === order.id)
+      }));
+      
+      setOrderHistory(mockOrderHistory);
     } catch (err) {
-      setError('載入訂單歷史失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入訂單歷史失敗: ' + err.message);
+      setOrderHistory([]);
     } finally {
       setLoading(false);
     }
@@ -220,7 +235,8 @@ const AdminPanel = () => {
         throw new Error('請填寫完整的產品資訊');
       }
 
-      await axios.post(`${config.apiUrl}/api/orders`, newOrder);
+      // 靜態模式：不實際保存，但顯示成功訊息
+      console.log('建立訂單:', newOrder);
       setSuccess('訂單建立成功！');
       
       // 重置表單
@@ -249,7 +265,8 @@ const AdminPanel = () => {
         throw new Error('請填寫客戶姓名');
       }
 
-      await axios.post(`${config.apiUrl}/api/customers`, newCustomer);
+      // 靜態模式：不實際保存，但顯示成功訊息
+      console.log('新增客戶:', newCustomer);
       setSuccess('客戶新增成功！');
       
       // 重置表單並重新載入客戶列表

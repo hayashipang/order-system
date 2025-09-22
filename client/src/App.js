@@ -29,17 +29,25 @@ function App() {
   };
 
   const renderPage = () => {
-    switch (currentPage) {
-      case 'kitchen':
-        return <KitchenDashboard />;
-      case 'customers':
-        return <CustomerOrders />;
-      case 'admin':
-        return <AdminPanel />;
-      case 'products':
-        return <ProductManagement />;
-      default:
-        return <KitchenDashboard />;
+    console.log('Current page:', currentPage);
+    console.log('User:', user);
+    
+    try {
+      switch (currentPage) {
+        case 'kitchen':
+          return <KitchenDashboard />;
+        case 'customers':
+          return <CustomerOrders />;
+        case 'admin':
+          return <AdminPanel />;
+        case 'products':
+          return <ProductManagement />;
+        default:
+          return <KitchenDashboard />;
+      }
+    } catch (error) {
+      console.error('Error rendering page:', error);
+      return <div>載入頁面時發生錯誤: {error.message}</div>;
     }
   };
 
