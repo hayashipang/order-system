@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
-import { getLocalData } from '../utils/localStorage';
 
 const KitchenDashboard = () => {
   const [productionList, setProductionList] = useState([]);

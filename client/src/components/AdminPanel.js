@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { getLocalData, saveLocalData, generateId } from '../utils/localStorage';
 import config from '../config';
 
 const AdminPanel = () => {
