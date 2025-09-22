@@ -1,7 +1,9 @@
 // 環境配置
 const config = {
-  // API 基礎 URL - 自動偵測當前主機
-  apiUrl: window.location.origin,
+  // API 基礎 URL
+  apiUrl: process.env.NODE_ENV === 'production' 
+    ? window.location.origin
+    : 'http://localhost:3000',
   
   // 應用程式設定
   app: {
