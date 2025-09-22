@@ -26,9 +26,9 @@ const ProductManagement = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用本地存儲數據
-      const data = getLocalData();
-      setProducts(data.products);
+      // 使用真正的 API 載入產品列表
+      const response = await axios.get(`${config.apiUrl}/api/products`);
+      setProducts(response.data);
     } catch (err) {
       setError('載入產品列表失敗: ' + err.message);
       setProducts([]);

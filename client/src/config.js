@@ -12,7 +12,7 @@ const config = {
   },
   
   // 是否使用本地存儲（當沒有後端時）
-  useLocalStorage: !process.env.REACT_APP_API_URL && process.env.NODE_ENV === 'production'
+  useLocalStorage: false  // 現在有 Railway 後端，使用真正的 API
 };
 
 export default config;

@@ -64,17 +64,10 @@ const AdminPanel = () => {
 
   const fetchCustomers = async () => {
     try {
-      if (config.useLocalStorage) {
-        // 使用本地存儲數據
-        const data = getLocalData();
-        setCustomers(data.customers);
-        setFilteredCustomers(data.customers);
-      } else {
-        // 使用 API
-        const response = await axios.get(`${config.apiUrl}/api/customers`);
-        setCustomers(response.data);
-        setFilteredCustomers(response.data);
-      }
+      // 使用真正的 API
+      const response = await axios.get(`${config.apiUrl}/api/customers`);
+      setCustomers(response.data);
+      setFilteredCustomers(response.data);
     } catch (err) {
       setError('載入客戶列表失敗: ' + err.message);
       setCustomers([]);
@@ -117,9 +110,9 @@ const AdminPanel = () => {
 
   const fetchProducts = async () => {
     try {
-      // 使用本地存儲數據
-      const data = getLocalData();
-      setProducts(data.products);
+      // 使用真正的 API
+      const response = await axios.get(`${config.apiUrl}/api/products`);
+      setProducts(response.data);
     } catch (err) {
       setError('載入產品列表失敗: ' + err.message);
       setProducts([]);
@@ -160,16 +153,9 @@ const AdminPanel = () => {
         throw new Error('請填寫客戶姓名');
       }
 
-      // 使用本地存儲保存數據
-      const data = getLocalData();
-      const customerIndex = data.customers.findIndex(c => c.id === editingCustomer.id);
-      if (customerIndex !== -1) {
-        data.customers[customerIndex] = { ...data.customers[customerIndex], ...editCustomerForm };
-        saveLocalData(data);
-        setSuccess('客戶更新成功！');
-      } else {
-        throw new Error('找不到要更新的客戶');
-      }
+      // 使用真正的 API 更新客戶
+      await axios.put(`${config.apiUrl}/api/customers/${editingCustomer.id}`, editCustomerForm);
+      setSuccess('客戶更新成功！');
       
       // 重新載入客戶列表
       await fetchCustomers();
@@ -194,15 +180,8 @@ const AdminPanel = () => {
     setSuccess('');
 
     try {
-      // 使用本地存儲刪除數據
-      const data = getLocalData();
-      data.customers = data.customers.filter(c => c.id !== customerId);
-      // 同時刪除相關的訂單
-      data.orders = data.orders.filter(o => o.customer_id !== customerId);
-      data.order_items = data.order_items.filter(item => 
-        !data.orders.some(order => order.id === item.order_id && order.customer_id === customerId)
-      );
-      saveLocalData(data);
+      // 使用真正的 API 刪除客戶
+      await axios.delete(`${config.apiUrl}/api/customers/${customerId}`);
       setSuccess('客戶刪除成功！');
       
       // 重新載入客戶列表
@@ -217,17 +196,14 @@ const AdminPanel = () => {
   const fetchOrderHistory = async () => {
     setLoading(true);
     try {
-      // 使用本地存儲數據
-      const data = getLocalData();
+      // 使用真正的 API 載入訂單歷史
+      const params = new URLSearchParams();
+      if (historyFilters.customer_id) params.append('customer_id', historyFilters.customer_id);
+      if (historyFilters.start_date) params.append('start_date', historyFilters.start_date);
+      if (historyFilters.end_date) params.append('end_date', historyFilters.end_date);
       
-      // 生成訂單歷史資料
-      const orderHistory = data.orders.map(order => ({
-        ...order,
-        customer_name: data.customers.find(c => c.id === order.customer_id)?.name || '未知客戶',
-        items: data.order_items.filter(item => item.order_id === order.id)
-      }));
-      
-      setOrderHistory(orderHistory);
+      const response = await axios.get(`${config.apiUrl}/api/orders/history?${params.toString()}`);
+      setOrderHistory(response.data);
     } catch (err) {
       setError('載入訂單歷史失敗: ' + err.message);
       setOrderHistory([]);
@@ -254,38 +230,8 @@ const AdminPanel = () => {
         throw new Error('請填寫完整的產品資訊');
       }
 
-      // 使用本地存儲保存訂單
-      const data = getLocalData();
-      const orderId = generateId(data, 'orders');
-      
-      // 新增訂單
-      const order = {
-        id: orderId,
-        customer_id: parseInt(newOrder.customer_id),
-        order_date: newOrder.order_date,
-        delivery_date: newOrder.delivery_date,
-        status: 'pending',
-        notes: newOrder.notes
-      };
-      data.orders.push(order);
-      
-      // 新增訂單項目
-      newOrder.items.forEach((item, index) => {
-        if (item.product_name && item.quantity > 0) {
-          const orderItem = {
-            id: generateId(data, 'order_items'),
-            order_id: orderId,
-            product_name: item.product_name,
-            quantity: parseInt(item.quantity),
-            unit_price: parseFloat(item.unit_price),
-            special_notes: item.special_notes,
-            status: 'pending'
-          };
-          data.order_items.push(orderItem);
-        }
-      });
-      
-      saveLocalData(data);
+      // 使用真正的 API 建立訂單
+      await axios.post(`${config.apiUrl}/api/orders`, newOrder);
       setSuccess('訂單建立成功！');
       
       // 重置表單
@@ -314,17 +260,8 @@ const AdminPanel = () => {
         throw new Error('請填寫客戶姓名');
       }
 
-      // 使用本地存儲保存客戶
-      const data = getLocalData();
-      const customer = {
-        id: generateId(data, 'customers'),
-        name: newCustomer.name.trim(),
-        phone: newCustomer.phone.trim(),
-        address: newCustomer.address.trim(),
-        source: newCustomer.source
-      };
-      data.customers.push(customer);
-      saveLocalData(data);
+      // 使用真正的 API 新增客戶
+      await axios.post(`${config.apiUrl}/api/customers`, newCustomer);
       setSuccess('客戶新增成功！');
       
       // 重置表單並重新載入客戶列表
