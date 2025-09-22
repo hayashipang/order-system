@@ -1,9 +1,7 @@
 // 環境配置
 const config = {
   // API 基礎 URL
-  apiUrl: process.env.NODE_ENV === 'production' 
-    ? process.env.REACT_APP_API_URL || 'https://order-system-sand.vercel.app'
-    : 'http://localhost:3000',
+  apiUrl: 'http://localhost:3000',
   
   // 應用程式設定
   app: {
