@@ -64,10 +64,17 @@ const AdminPanel = () => {
 
   const fetchCustomers = async () => {
     try {
-      // 使用本地存儲數據
-      const data = getLocalData();
-      setCustomers(data.customers);
-      setFilteredCustomers(data.customers);
+      if (config.useLocalStorage) {
+        // 使用本地存儲數據
+        const data = getLocalData();
+        setCustomers(data.customers);
+        setFilteredCustomers(data.customers);
+      } else {
+        // 使用 API
+        const response = await axios.get(`${config.apiUrl}/api/customers`);
+        setCustomers(response.data);
+        setFilteredCustomers(response.data);
+      }
     } catch (err) {
       setError('載入客戶列表失敗: ' + err.message);
       setCustomers([]);
