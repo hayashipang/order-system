@@ -36,7 +36,6 @@ const CustomerOrders = () => {
   const getDateButtonText = (days) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
-    const today = new Date();
     
     if (days === 0) return '今天';
     if (days === 1) return '明天';
