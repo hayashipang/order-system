@@ -15,10 +15,30 @@ const KitchenDashboard = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get(`${config.apiUrl}/api/kitchen/production/${date}`);
-      setProductionList(response.data);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
+      
+      // 模擬製作清單資料
+      const mockProductionList = data.order_items.map(item => ({
+        product_name: item.product_name,
+        total_quantity: item.quantity,
+        unit_price: item.unit_price,
+        total_amount: item.quantity * item.unit_price,
+        order_date: date,
+        delivery_date: date,
+        order_status: item.status,
+        pending_quantity: item.status === 'pending' ? item.quantity : 0,
+        completed_quantity: item.status === 'completed' ? item.quantity : 0,
+        pending_count: item.status === 'pending' ? 1 : 0,
+        completed_count: item.status === 'completed' ? 1 : 0
+      }));
+      
+      setProductionList(mockProductionList);
     } catch (err) {
-      setError('載入製作清單失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入製作清單失敗: ' + err.message);
+      // 如果載入失敗，使用預設資料
+      setProductionList([]);
     } finally {
       setLoading(false);
     }

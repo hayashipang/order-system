@@ -25,10 +25,13 @@ const ProductManagement = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get(`${config.apiUrl}/api/products`);
-      setProducts(response.data);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
+      setProducts(data.products);
     } catch (err) {
-      setError('載入產品列表失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入產品列表失敗: ' + err.message);
+      setProducts([]);
     } finally {
       setLoading(false);
     }

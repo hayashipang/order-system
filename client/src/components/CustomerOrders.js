@@ -15,11 +15,39 @@ const CustomerOrders = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get(`${config.apiUrl}/api/orders/customers/${date}`);
-      setCustomerOrders(response.data.orders);
-      setTotalDailyAmount(response.data.total_daily_amount);
+      // 使用靜態資料而不是 API
+      const response = await fetch('/data.json');
+      const data = await response.json();
+      
+      // 模擬客戶訂單資料
+      const mockCustomerOrders = data.customers.map(customer => ({
+        customer_id: customer.id,
+        customer_name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        source: customer.source,
+        order_id: 1,
+        delivery_date: date,
+        status: 'pending',
+        order_notes: '',
+        items: data.order_items.map(item => ({
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          item_total: item.quantity * item.unit_price,
+          special_notes: item.special_notes,
+          item_status: item.status
+        })),
+        customer_total: data.order_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0),
+        all_items_completed: false
+      }));
+      
+      setCustomerOrders(mockCustomerOrders);
+      setTotalDailyAmount(mockCustomerOrders.reduce((sum, order) => sum + order.customer_total, 0));
     } catch (err) {
-      setError('載入客戶訂單失敗: ' + (err.response?.data?.error || err.message));
+      setError('載入客戶訂單失敗: ' + err.message);
+      setCustomerOrders([]);
+      setTotalDailyAmount(0);
     } finally {
       setLoading(false);
     }
