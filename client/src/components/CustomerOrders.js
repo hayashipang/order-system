@@ -17,9 +17,27 @@ const CustomerOrders = () => {
     try {
       // 使用真正的 API 載入客戶訂單
       const response = await axios.get(`${config.apiUrl}/api/orders/customers/${date}`);
-      setCustomerOrders(response.data.orders);
-      setTotalDailyAmount(response.data.totalAmount);
+      console.log('客戶訂單 API 響應:', response.data);
+      
+      // 確保數據結構正確
+      const orders = response.data.orders || [];
+      const totalAmount = response.data.totalAmount || 0;
+      
+      // 確保每個訂單都有必要的屬性
+      const safeOrders = orders.map(order => ({
+        ...order,
+        customer_total: order.customer_total || 0,
+        items: (order.items || []).map(item => ({
+          ...item,
+          unit_price: item.unit_price || 0,
+          item_total: item.item_total || (item.quantity || 0) * (item.unit_price || 0)
+        }))
+      }));
+      
+      setCustomerOrders(safeOrders);
+      setTotalDailyAmount(totalAmount);
     } catch (err) {
+      console.error('載入客戶訂單錯誤:', err);
       setError('載入客戶訂單失敗: ' + err.message);
       setCustomerOrders([]);
       setTotalDailyAmount(0);
@@ -318,7 +336,7 @@ const CustomerOrders = () => {
                       fontSize: '18px',
                       fontWeight: 'bold'
                     }}>
-                      當日總金額: NT$ {totalDailyAmount.toLocaleString()}
+                      當日總金額: NT$ {(totalDailyAmount || 0).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -343,7 +361,7 @@ const CustomerOrders = () => {
                             fontSize: '16px',
                             fontWeight: 'bold'
                           }}>
-                            總金額: NT$ {order.customer_total.toLocaleString()}
+                            總金額: NT$ {(order.customer_total || 0).toLocaleString()}
                           </div>
                           <span 
                             className="order-status"
@@ -378,7 +396,7 @@ const CustomerOrders = () => {
                             <div style={{ flex: 1 }}>
                               <div className="item-name">{item.product_name}</div>
                               <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
-                                單價: NT$ {item.unit_price.toLocaleString()}
+                                單價: NT$ {(item.unit_price || 0).toLocaleString()}
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -401,7 +419,7 @@ const CustomerOrders = () => {
                                 fontSize: '14px',
                                 fontWeight: 'bold'
                               }}>
-                                NT$ {item.item_total.toLocaleString()}
+                                NT$ {(item.item_total || 0).toLocaleString()}
                               </div>
                             </div>
                           </div>
