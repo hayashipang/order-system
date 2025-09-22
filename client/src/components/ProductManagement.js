@@ -44,13 +44,20 @@ const ProductManagement = () => {
     setSuccess('');
 
     try {
+      console.log('提交產品數據:', formData);
+      console.log('編輯中的產品:', editingProduct);
+      
       if (editingProduct) {
         // 更新產品
-        await axios.put(`${config.apiUrl}/api/products/${editingProduct.id}`, formData);
+        console.log('更新產品 API URL:', `${config.apiUrl}/api/products/${editingProduct.id}`);
+        const response = await axios.put(`${config.apiUrl}/api/products/${editingProduct.id}`, formData);
+        console.log('更新產品響應:', response.data);
         setSuccess('產品更新成功！');
       } else {
         // 新增產品
-        await axios.post(`${config.apiUrl}/api/products`, formData);
+        console.log('新增產品 API URL:', `${config.apiUrl}/api/products`);
+        const response = await axios.post(`${config.apiUrl}/api/products`, formData);
+        console.log('新增產品響應:', response.data);
         setSuccess('產品新增成功！');
       }
       
@@ -58,8 +65,10 @@ const ProductManagement = () => {
       setFormData({ name: '', price: '', description: '' });
       setEditingProduct(null);
       setShowForm(false);
-      fetchProducts();
+      await fetchProducts();
     } catch (err) {
+      console.error('產品操作錯誤:', err);
+      console.error('錯誤響應:', err.response?.data);
       setError('操作失敗: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);

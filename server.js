@@ -166,11 +166,18 @@ app.put('/api/products/:id', (req, res) => {
   const { name, price, description } = req.body;
   
   try {
+    console.log('更新產品請求:', { id, name, price, description });
+    console.log('當前產品列表:', db.products);
+    
     const productIndex = db.products.findIndex(p => p.id === parseInt(id));
     if (productIndex === -1) {
+      console.log('產品不存在，ID:', id);
       res.status(404).json({ error: '產品不存在' });
       return;
     }
+    
+    console.log('找到產品，索引:', productIndex);
+    console.log('更新前產品:', db.products[productIndex]);
     
     db.products[productIndex] = {
       ...db.products[productIndex],
@@ -179,9 +186,12 @@ app.put('/api/products/:id', (req, res) => {
       description
     };
     
+    console.log('更新後產品:', db.products[productIndex]);
+    
     saveData();
-    res.json({ message: '產品更新成功' });
+    res.json({ message: '產品更新成功', product: db.products[productIndex] });
   } catch (error) {
+    console.error('更新產品錯誤:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -212,12 +222,16 @@ app.get('/api/kitchen/production/:date', (req, res) => {
   try {
     console.log('請求製作清單日期:', date);
     console.log('所有訂單:', db.orders);
+    console.log('所有訂單項目:', db.order_items);
     
     // 取得指定日期的訂單（支援多種日期格式）
     const orders = db.orders.filter(order => {
       const orderDate = new Date(order.order_date).toISOString().split('T')[0];
       const requestDate = new Date(date).toISOString().split('T')[0];
-      return orderDate === requestDate || order.order_date === date;
+      const directMatch = order.order_date === date;
+      const dateMatch = orderDate === requestDate;
+      console.log(`訂單 ${order.id}: order_date=${order.order_date}, 直接匹配=${directMatch}, 日期匹配=${dateMatch}`);
+      return directMatch || dateMatch;
     });
     
     console.log('匹配的訂單:', orders);
