@@ -704,8 +704,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log(`Local access: http://localhost:${PORT}`);
+  console.log(`Network access: http://[YOUR_IP]:${PORT}`);
   console.log(`Visit http://localhost:${PORT} to view the application`);
 });
 

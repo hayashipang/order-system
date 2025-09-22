@@ -1,7 +1,9 @@
 // 環境配置
 const config = {
   // API 基礎 URL
-  apiUrl: 'http://localhost:3000',
+  apiUrl: process.env.NODE_ENV === 'production' 
+    ? process.env.REACT_APP_API_URL || window.location.origin
+    : 'http://localhost:3000',
   
   // 應用程式設定
   app: {
