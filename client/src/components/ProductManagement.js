@@ -17,9 +17,23 @@ const ProductManagement = () => {
     description: ''
   });
 
+  // 運費設定狀態
+  const [shippingFee, setShippingFee] = useState(120);
+  const [editingShippingFee, setEditingShippingFee] = useState(false);
+
   useEffect(() => {
     fetchProducts();
+    fetchShippingFee();
   }, []);
+
+  const fetchShippingFee = async () => {
+    try {
+      const response = await axios.get(`${config.apiUrl}/api/shipping-fee`);
+      setShippingFee(response.data.shippingFee);
+    } catch (err) {
+      console.error('載入運費設定失敗:', err);
+    }
+  };
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -106,6 +120,20 @@ const ProductManagement = () => {
     setFormData({ name: '', price: '', description: '' });
     setEditingProduct(null);
     setShowForm(false);
+  };
+
+  const handleShippingFeeUpdate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await axios.put(`${config.apiUrl}/api/shipping-fee`, { shippingFee });
+      setSuccess('運費設定更新成功！');
+      setEditingShippingFee(false);
+    } catch (err) {
+      setError('更新運費設定失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -235,6 +263,56 @@ const ProductManagement = () => {
             )}
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <h2>運費設定</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+          <label style={{ fontWeight: 'bold' }}>運費金額：</label>
+          {editingShippingFee ? (
+            <>
+              <input
+                type="number"
+                value={shippingFee}
+                onChange={(e) => setShippingFee(parseFloat(e.target.value) || 0)}
+                style={{ width: '100px', padding: '5px' }}
+                min="0"
+                step="1"
+              />
+              <button 
+                className="button success"
+                onClick={handleShippingFeeUpdate}
+                disabled={loading}
+              >
+                儲存
+              </button>
+              <button 
+                className="button secondary"
+                onClick={() => setEditingShippingFee(false)}
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#2c3e50' }}>
+                NT$ {shippingFee}
+              </span>
+              <button 
+                className="button primary"
+                onClick={() => setEditingShippingFee(true)}
+              >
+                編輯
+              </button>
+            </>
+          )}
+        </div>
+        <div style={{ lineHeight: '1.6', color: '#666', fontSize: '14px' }}>
+          <p>• 運費金額用於新增訂單時的運費計算</p>
+          <p>• 客戶可選擇「免運費」或「支付運費給快遞公司」</p>
+          <p>• 免運費時，我們吸收運費成本（-NT$ 120）</p>
+          <p>• 客戶付運費時，費用給快遞公司，不計入我們收入</p>
+        </div>
       </div>
 
       <div className="card">

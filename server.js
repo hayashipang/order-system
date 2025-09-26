@@ -4,8 +4,35 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
 
+// 載入環境變數（簡化版本）
+const loadEnvFile = (filePath) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      const envContent = fs.readFileSync(filePath, 'utf8');
+      envContent.split('\n').forEach(line => {
+        const [key, value] = line.split('=');
+        if (key && value && !process.env[key]) {
+          process.env[key] = value.trim();
+        }
+      });
+    }
+  } catch (error) {
+    console.log('環境變數檔案載入失敗，使用預設值');
+  }
+};
+
+// 載入本地環境變數
+loadEnvFile(path.join(__dirname, 'env.local'));
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// 顯示環境資訊
+console.log('🌍 環境設定:');
+console.log('  NODE_ENV:', NODE_ENV);
+console.log('  PORT:', PORT);
+console.log('  API_BASE_URL:', process.env.API_BASE_URL || '未設定');
 
 // Middleware
 app.use(cors());
@@ -139,6 +166,24 @@ app.get('/api/products', checkDatabaseReady, (req, res) => {
   res.json(db.products);
 });
 
+// 取得運費設定
+app.get('/api/shipping-fee', checkDatabaseReady, (req, res) => {
+  res.json({ shippingFee: db.shippingFee || 120 });
+});
+
+// 更新運費設定
+app.put('/api/shipping-fee', checkDatabaseReady, (req, res) => {
+  const { shippingFee } = req.body;
+  
+  try {
+    db.shippingFee = parseFloat(shippingFee);
+    saveData();
+    res.json({ message: '運費設定更新成功', shippingFee: db.shippingFee });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 新增產品
 app.post('/api/products', (req, res) => {
   const { name, price, description } = req.body;
@@ -245,7 +290,7 @@ app.get('/api/kitchen/production/:date', (req, res) => {
     const productStats = {};
     
     orderItems.forEach(item => {
-      const key = `${item.product_name}_${item.unit_price}`;
+      const key = `${item.product_name}_${item.unit_price}_${item.is_gift || false}`;
       if (!productStats[key]) {
         productStats[key] = {
           product_name: item.product_name,
@@ -258,7 +303,8 @@ app.get('/api/kitchen/production/:date', (req, res) => {
           pending_quantity: 0,
           completed_quantity: 0,
           pending_count: 0,
-          completed_count: 0
+          completed_count: 0,
+          is_gift: item.is_gift || false
         };
       }
       
@@ -303,7 +349,7 @@ app.get('/api/orders/customers/:date', (req, res) => {
     const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
     console.log('訂單項目:', orderItems);
     
-    // 按客戶分組並計算金額
+    // 按客戶和訂單分組並計算金額
     const groupedOrders = {};
     let totalDailyAmount = 0;
     
@@ -312,8 +358,10 @@ app.get('/api/orders/customers/:date', (req, res) => {
       if (!customer) return;
       
       const customerId = customer.id;
-      if (!groupedOrders[customerId]) {
-        groupedOrders[customerId] = {
+      const orderKey = `${customerId}_${order.id}`; // 使用客戶ID和訂單ID作為唯一鍵
+      
+      if (!groupedOrders[orderKey]) {
+        groupedOrders[orderKey] = {
           customer_id: customerId,
           customer_name: customer.name,
           phone: customer.phone,
@@ -321,8 +369,10 @@ app.get('/api/orders/customers/:date', (req, res) => {
           source: customer.source,
           order_id: order.id,
           delivery_date: order.delivery_date,
-          status: order.status,
+          status: order.status === 'completed' ? 'shipped' : order.status,
           order_notes: order.notes,
+          shipping_type: order.shipping_type || 'none',
+          shipping_fee: order.shipping_fee || 0,
           items: [],
           customer_total: 0,
           all_items_completed: true
@@ -333,28 +383,36 @@ app.get('/api/orders/customers/:date', (req, res) => {
       const items = orderItems.filter(item => item.order_id === order.id);
       items.forEach(item => {
         const itemTotal = item.quantity * item.unit_price;
-        groupedOrders[customerId].items.push({
+        groupedOrders[orderKey].items.push({
           product_name: item.product_name,
           quantity: item.quantity,
           unit_price: item.unit_price,
           item_total: itemTotal,
           special_notes: item.special_notes,
-          item_status: item.status
+          item_status: item.status,
+          is_gift: item.is_gift || false
         });
         
         // 檢查是否有未完成的項目
         if (item.status !== 'completed') {
-          groupedOrders[customerId].all_items_completed = false;
+          groupedOrders[orderKey].all_items_completed = false;
         }
         
-        groupedOrders[customerId].customer_total += itemTotal;
+        groupedOrders[orderKey].customer_total += itemTotal;
         totalDailyAmount += itemTotal;
       });
+      
+      // 只有免運費（負數）會影響我們的收入
+      if (order.shipping_fee && order.shipping_fee < 0) {
+        groupedOrders[orderKey].customer_total += order.shipping_fee;
+        totalDailyAmount += order.shipping_fee;
+      }
+      // 客戶付運費給快遞公司，不計入我們的收入
     });
     
     res.json({
       orders: Object.values(groupedOrders),
-      total_daily_amount: totalDailyAmount
+      totalAmount: totalDailyAmount
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -580,9 +638,103 @@ app.delete('/api/customers/:id', (req, res) => {
   }
 });
 
+// 取得訂單歷史
+app.get('/api/orders/history', (req, res) => {
+  const { customer_id, start_date, end_date } = req.query;
+  
+  try {
+    let filteredOrders = db.orders;
+    
+    // 應用篩選條件
+    if (customer_id) {
+      const customerId = parseInt(customer_id);
+      const customer = db.customers.find(c => c.id === customerId);
+      
+      if (customer) {
+        // 同時根據customer_id和客戶姓名來篩選
+        filteredOrders = filteredOrders.filter(order => 
+          order.customer_id === customerId || 
+          (order.customer_id === null && order.customer_name === customer.name)
+        );
+      } else {
+        filteredOrders = filteredOrders.filter(order => order.customer_id === customerId);
+      }
+    }
+    
+    if (start_date) {
+      filteredOrders = filteredOrders.filter(order => order.order_date >= start_date);
+    }
+    
+    if (end_date) {
+      filteredOrders = filteredOrders.filter(order => order.order_date <= end_date);
+    }
+    
+    // 加入客戶資訊和訂單項目，並排序
+    const result = filteredOrders
+      .map(order => {
+        const customer = db.customers.find(c => c.id === order.customer_id);
+        const orderItems = db.order_items.filter(item => item.order_id === order.id);
+        
+        return {
+          id: order.id,
+          order_date: order.order_date,
+          delivery_date: order.delivery_date,
+          status: order.status === 'completed' ? 'shipped' : order.status, // Map 'completed' to 'shipped' for frontend display
+          notes: order.notes,
+          shipping_type: order.shipping_type || 'none',
+          shipping_fee: order.shipping_fee || 0,
+          customer_name: customer ? customer.name : '未知客戶',
+          phone: customer ? customer.phone : '',
+          items: orderItems.map(item => ({
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            special_notes: item.special_notes,
+            status: item.status,
+            is_gift: item.is_gift || false
+          }))
+        };
+      })
+      .sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得單個訂單詳情
+app.get('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const order = db.orders.find(o => o.id === parseInt(id));
+    if (!order) {
+      res.status(404).json({ error: '訂單不存在' });
+      return;
+    }
+    
+    // 取得客戶資訊
+    const customer = db.customers.find(c => c.id === order.customer_id);
+    
+    // 取得訂單項目
+    const orderItems = db.order_items.filter(item => item.order_id === parseInt(id));
+    
+    res.json({
+      ...order,
+      customer_name: customer ? customer.name : '未知客戶',
+      customer_phone: customer ? customer.phone : '',
+      customer_address: customer ? customer.address : '',
+      items: orderItems
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 新增訂單
 app.post('/api/orders', (req, res) => {
-  const { customer_id, order_date, delivery_date, items, notes } = req.body;
+  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee } = req.body;
   
   try {
     const newOrder = {
@@ -591,7 +743,9 @@ app.post('/api/orders', (req, res) => {
       order_date,
       delivery_date,
       status: 'pending',
-      notes
+      notes,
+      shipping_type: shipping_type || 'none', // 'none', 'paid', 'free'
+      shipping_fee: shipping_fee || 0
     };
     
     db.orders.push(newOrder);
@@ -605,7 +759,8 @@ app.post('/api/orders', (req, res) => {
         quantity: parseInt(item.quantity),
         unit_price: parseFloat(item.unit_price),
         special_notes: item.special_notes || '',
-        status: 'pending'
+        status: 'pending',
+        is_gift: item.is_gift || false
       };
       db.order_items.push(newItem);
     });
@@ -617,7 +772,55 @@ app.post('/api/orders', (req, res) => {
   }
 });
 
-// 更新訂單狀態
+// 更新訂單（完整編輯）
+app.put('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee } = req.body;
+  
+  try {
+    const orderIndex = db.orders.findIndex(o => o.id === parseInt(id));
+    if (orderIndex === -1) {
+      res.status(404).json({ error: '訂單不存在' });
+      return;
+    }
+    
+    // 更新訂單基本資訊
+    db.orders[orderIndex] = {
+      ...db.orders[orderIndex],
+      customer_id: parseInt(customer_id),
+      order_date,
+      delivery_date,
+      notes,
+      shipping_type: shipping_type || 'none',
+      shipping_fee: shipping_fee || 0
+    };
+    
+    // 刪除舊的訂單項目
+    db.order_items = db.order_items.filter(item => item.order_id !== parseInt(id));
+    
+    // 新增新的訂單項目
+    items.forEach(item => {
+      const newItem = {
+        id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
+        order_id: parseInt(id),
+        product_name: item.product_name,
+        quantity: parseInt(item.quantity),
+        unit_price: parseFloat(item.unit_price),
+        special_notes: item.special_notes || '',
+        status: item.status || 'pending', // 保持原有狀態或設為 pending
+        is_gift: item.is_gift || false
+      };
+      db.order_items.push(newItem);
+    });
+    
+    saveData();
+    res.json({ message: '訂單更新成功', order: db.orders[orderIndex] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新訂單狀態（基於訂單項目狀態自動計算）
 app.put('/api/orders/:id/status', (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -629,10 +832,69 @@ app.put('/api/orders/:id/status', (req, res) => {
       return;
     }
     
-    db.orders[orderIndex].status = status;
+    // 取得該訂單的所有項目
+    const orderItems = db.order_items.filter(item => item.order_id === parseInt(id));
+    const total = orderItems.length;
+    const completed = orderItems.filter(item => item.status === 'completed').length;
+    
+    // 如果請求的狀態是 pending 或 shipped，直接設置
+    if (status === 'pending' || status === 'shipped') {
+      db.orders[orderIndex].status = status;
+    } else {
+      // 否則根據訂單項目狀態自動計算訂單狀態
+      let newStatus = 'pending';
+      if (total > 0 && completed === total) {
+        newStatus = 'completed';
+      } else if (completed > 0) {
+        newStatus = 'in_progress';
+      }
+      db.orders[orderIndex].status = newStatus;
+    }
+    
     saveData();
-    res.json({ message: '訂單狀態更新成功' });
+    res.json({ 
+      message: '訂單狀態更新成功', 
+      status: db.orders[orderIndex].status,
+      total_items: total,
+      completed_items: completed
+    });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 刪除訂單
+app.delete('/api/orders/:id', (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    console.log('刪除訂單:', id);
+    
+    // 檢查訂單是否存在
+    const orderIndex = db.orders.findIndex(order => order.id === parseInt(id));
+    if (orderIndex === -1) {
+      return res.status(404).json({ error: '訂單不存在' });
+    }
+    
+    // 刪除訂單
+    const deletedOrder = db.orders.splice(orderIndex, 1)[0];
+    console.log('已刪除訂單:', deletedOrder);
+    
+    // 刪除相關的訂單項目
+    const deletedItems = db.order_items.filter(item => item.order_id === parseInt(id));
+    db.order_items = db.order_items.filter(item => item.order_id !== parseInt(id));
+    console.log('已刪除訂單項目:', deletedItems);
+    
+    // 保存到檔案
+    saveData();
+    
+    res.json({ 
+      message: '訂單刪除成功',
+      deletedOrder: deletedOrder,
+      deletedItemsCount: deletedItems.length
+    });
+  } catch (error) {
+    console.error('刪除訂單錯誤:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -643,16 +905,24 @@ app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady,
   const { status } = req.body;
   
   try {
+    console.log('更新產品製作狀態:', { date, productName, status });
+    
     // 取得指定日期的訂單
     const orders = db.orders.filter(order => order.order_date === date);
+    console.log('匹配的訂單:', orders.map(o => ({ id: o.id, order_date: o.order_date })));
     const orderIds = orders.map(order => order.id);
+    console.log('訂單IDs:', orderIds);
     
     // 更新該日期該產品的所有訂單項目狀態
+    let updatedCount = 0;
     db.order_items.forEach(item => {
       if (orderIds.includes(item.order_id) && item.product_name === productName) {
+        console.log('更新訂單項目:', { order_id: item.order_id, product_name: item.product_name, old_status: item.status, new_status: status });
         item.status = status;
+        updatedCount++;
       }
     });
+    console.log('更新的項目數量:', updatedCount);
     
     // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
     orders.forEach(order => {
@@ -676,8 +946,9 @@ app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady,
   }
 });
 
-// 取得訂單歷史
-app.get('/api/orders/history', (req, res) => {
+
+// 匯出訂單歷史為 CSV
+app.get('/api/orders/history/export/csv', (req, res) => {
   const { customer_id, start_date, end_date } = req.query;
   
   try {
@@ -696,23 +967,61 @@ app.get('/api/orders/history', (req, res) => {
       filteredOrders = filteredOrders.filter(order => order.order_date <= end_date);
     }
     
-    // 加入客戶資訊並排序
-    const result = filteredOrders
-      .map(order => {
-        const customer = db.customers.find(c => c.id === order.customer_id);
-        return {
-          id: order.id,
-          order_date: order.order_date,
-          delivery_date: order.delivery_date,
-          status: order.status,
-          notes: order.notes,
-          customer_name: customer ? customer.name : '未知客戶',
-          phone: customer ? customer.phone : ''
-        };
-      })
-      .sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
+    // 準備 CSV 資料
+    const csvData = [];
+    csvData.push(['客戶名稱', '訂單日期', '出貨日期', '訂購產品', '數量', '單價', '小計', '運費', '狀態', '備註']);
     
-    res.json(result);
+    filteredOrders
+      .sort((a, b) => new Date(b.order_date) - new Date(a.order_date))
+      .forEach(order => {
+        const customer = db.customers.find(c => c.id === order.customer_id);
+        const customerName = customer ? customer.name : '未知客戶';
+        const orderItems = db.order_items.filter(item => item.order_id === order.id);
+        
+        if (orderItems.length === 0) {
+          // 如果沒有訂單項目，仍然顯示訂單資訊
+          csvData.push([
+            customerName,
+            order.order_date,
+            order.delivery_date,
+            '無產品',
+            '0',
+            '0',
+            '0',
+            order.shipping_fee || 0,
+            order.status === 'completed' ? '已完成' : '進行中',
+            order.notes || ''
+          ]);
+        } else {
+          orderItems.forEach(item => {
+            const subtotal = item.quantity * item.unit_price;
+            csvData.push([
+              customerName,
+              order.order_date,
+              order.delivery_date,
+              item.product_name,
+              item.quantity,
+              item.unit_price,
+              subtotal,
+              order.shipping_fee || 0,
+              item.status === 'completed' ? '已完成' : '進行中',
+              item.special_notes || order.notes || ''
+            ]);
+          });
+        }
+      });
+    
+    // 轉換為 CSV 格式
+    const csvContent = csvData.map(row => 
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    
+    // 設定檔案名稱
+    const filename = `訂單歷史_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.send('\uFEFF' + csvContent); // 添加 BOM 以支援中文
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -350,6 +350,18 @@ const CustomerOrders = () => {
                           <div className="customer-phone">{order.phone}</div>
                           {order.address && <div className="customer-address">地址: {order.address}</div>}
                           {order.source && <div className="customer-source">來源: {order.source}</div>}
+                          <div className="delivery-date" style={{ 
+                            background: '#f39c12', 
+                            color: 'white', 
+                            padding: '6px 12px', 
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            marginTop: '8px',
+                            display: 'inline-block'
+                          }}>
+                            📅 出貨日期: {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          </div>
                           {order.order_notes && <div className="order-notes">備註: {order.order_notes}</div>}
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -363,27 +375,41 @@ const CustomerOrders = () => {
                           }}>
                             總金額: NT$ {(order.customer_total || 0).toLocaleString()}
                           </div>
-                          <span 
-                            className="order-status"
-                            style={{ backgroundColor: getStatusColor(order.status) }}
-                          >
-                            {getStatusText(order.status)}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {order.shipping_type === 'free' && (
+                              <span 
+                                style={{ 
+                                  backgroundColor: '#e74c3c',
+                                  color: 'white',
+                                  padding: '4px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold'
+                                }}
+                                title="免運費"
+                              >
+                                🚚 免運
+                              </span>
+                            )}
+                            <span 
+                              className="order-status"
+                              style={{ backgroundColor: getStatusColor(order.status) }}
+                            >
+                              {getStatusText(order.status)}
+                            </span>
+                          </div>
                           <select
                             value={order.status}
                             onChange={(e) => updateOrderStatus(order.order_id, e.target.value)}
-                            disabled={!order.all_items_completed}
                             style={{
                               padding: '6px 12px',
                               border: '1px solid #ddd',
                               borderRadius: '6px',
-                              fontSize: '12px',
-                              opacity: order.all_items_completed ? 1 : 0.5,
-                              cursor: order.all_items_completed ? 'pointer' : 'not-allowed'
+                              fontSize: '12px'
                             }}
                           >
                             <option value="pending">待出貨</option>
-                            <option value="shipped" disabled={!order.all_items_completed}>
+                            <option value="shipped" disabled={order.status === 'pending' && !order.all_items_completed}>
                               {order.all_items_completed ? '已出貨' : '已出貨 (需完成所有產品)'}
                             </option>
                           </select>
@@ -394,7 +420,15 @@ const CustomerOrders = () => {
                         {order.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="order-item">
                             <div style={{ flex: 1 }}>
-                              <div className="item-name">{item.product_name}</div>
+                              <div className="item-name">
+                                {item.is_gift ? (
+                                  <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
+                                    🎁 {item.product_name} (贈送)
+                                  </span>
+                                ) : (
+                                  item.product_name
+                                )}
+                              </div>
                               <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
                                 單價: NT$ {(item.unit_price || 0).toLocaleString()}
                               </div>

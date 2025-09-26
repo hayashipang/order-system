@@ -6,12 +6,18 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "dev:client": "cd client && npm start",
+    "dev:server": "nodemon server.js",
+    "dev:full": "echo '請分別在兩個終端中執行: npm run dev:server 和 npm run dev:client'",
     "build": "cd client && npm install && npm run build",
+    "build:prod": "NODE_ENV=production npm run build",
     "install-client": "cd client && npm install",
     "heroku-postbuild": "npm run install-client && npm run build",
     "vercel-build": "cd client && npm install && npm run build",
     "postinstall": "cd client && npm install",
-    "railway-build": "npm run install-client && npm run build"
+    "railway-build": "npm run install-client && npm run build",
+    "test:local": "npm run build && npm start",
+    "clean": "rm -rf client/build && rm -rf node_modules && rm -rf client/node_modules"
   },
   "keywords": [
     "order-management",
@@ -38,10 +44,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/order-system.git"
+    "url": "https://github.com/james/order-system.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/order-system/issues"
+    "url": "https://github.com/james/order-system/issues"
   },
-  "homepage": "https://yourusername.github.io/order-system"
+  "homepage": "https://order-system.vercel.app"
 }

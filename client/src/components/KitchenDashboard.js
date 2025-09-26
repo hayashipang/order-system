@@ -10,6 +10,7 @@ const KitchenDashboard = () => {
   const [updatingStatus, setUpdatingStatus] = useState({});
   const [showWeeklyView, setShowWeeklyView] = useState(false);
   const [weeklyData, setWeeklyData] = useState([]);
+  
 
   const fetchProductionList = async (date) => {
     setLoading(true);
@@ -26,9 +27,11 @@ const KitchenDashboard = () => {
     }
   };
 
+
   useEffect(() => {
     fetchProductionList(selectedDate);
   }, [selectedDate]);
+
 
   const handleDateChange = (date) => {
     setSelectedDate(date);
@@ -63,12 +66,39 @@ const KitchenDashboard = () => {
     try {
       // 從今天開始的未來一週（包含今天）
       const today = new Date(selectedDate);
-      const startDate = today.toISOString().split('T')[0];
+      const weekdays = [];
       
-      const response = await axios.get(`${config.apiUrl}/api/orders/weekly/${startDate}`);
-      setWeeklyData(response.data.weekly_data);
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        const dateString = date.toISOString().split('T')[0];
+        
+        try {
+          // 廚房製作清單的週視圖
+          const response = await axios.get(`${config.apiUrl}/api/kitchen/production/${dateString}`);
+          const totalQuantity = response.data.reduce((sum, item) => sum + item.total_quantity, 0);
+          
+          weekdays.push({
+            date: dateString,
+            total_quantity: totalQuantity,
+            order_count: 0,
+            total_amount: 0
+          });
+        } catch (err) {
+          console.error(`載入 ${dateString} 的數據失敗:`, err);
+          weekdays.push({
+            date: dateString,
+            total_quantity: 0,
+            order_count: 0,
+            total_amount: 0
+          });
+        }
+      }
+      
+      setWeeklyData(weekdays);
     } catch (err) {
-      setError('取得週資料失敗: ' + (err.response?.data?.error || err.message));
+      console.error('載入週數據失敗:', err);
+      setWeeklyData([]);
     }
   };
 
@@ -112,7 +142,9 @@ const KitchenDashboard = () => {
   return (
     <div>
       <div className="card">
-        <h2>廚房製作清單</h2>
+        <h2>廚房工作台</h2>
+        
+        {/* 標籤切換 */}
         
         <div className="date-selector">
           <button 
@@ -160,7 +192,8 @@ const KitchenDashboard = () => {
 
         {error && <div className="error">{error}</div>}
 
-        {showWeeklyView && (
+        {/* 廚房製作清單內容 */}
+            {showWeeklyView && (
           <div style={{
             marginBottom: '20px',
             padding: '20px',
@@ -217,7 +250,7 @@ const KitchenDashboard = () => {
               <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <div style={{ width: '12px', height: '12px', background: '#e9ecef', borderRadius: '3px' }}></div>
-                  <span>無訂單</span>
+                  <span>無製作</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <div style={{ width: '12px', height: '12px', background: '#28a745', borderRadius: '3px' }}></div>
@@ -258,7 +291,15 @@ const KitchenDashboard = () => {
                   {productionList.map((item, index) => (
                     <div key={index} className="production-item">
                       <div className="product-info">
-                        <div className="product-name">{item.product_name}</div>
+                        <div className="product-name">
+                          {item.is_gift ? (
+                            <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
+                              🎁 {item.product_name} (贈送)
+                            </span>
+                          ) : (
+                            item.product_name
+                          )}
+                        </div>
                         <div className="quantity-display">
                           <span className="total-quantity">{item.total_quantity} 瓶</span>
                         </div>
@@ -354,10 +395,11 @@ const KitchenDashboard = () => {
             )}
           </>
         )}
+
       </div>
 
       <div className="card">
-        <h2>製作說明</h2>
+        <h2>使用說明</h2>
         <div style={{ lineHeight: '1.6', color: '#666' }}>
           <p>• 此頁面顯示當日需要製作的所有產品總數量</p>
           <p>• 廚房員工只需專注於製作數量，不需要知道客戶資訊</p>

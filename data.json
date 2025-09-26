@@ -15,11 +15,18 @@
   ],
   "customers": [
     {
-      "id": 1,
-      "name": "測試客戶",
-      "phone": "0912345678",
-      "address": "台北市",
-      "source": "網路"
+      "id": 2,
+      "name": "林志邦",
+      "phone": "0938090857",
+      "address": "台中市南屯區文心路一段214號3F-6",
+      "source": "蝦皮"
+    },
+    {
+      "id": 3,
+      "name": "白雅婷",
+      "phone": "0982630779",
+      "address": "台中市南屯區文心路一段214號3F-6",
+      "source": "FB"
     }
   ],
   "products": [
@@ -68,29 +75,53 @@
     {
       "id": 8,
       "name": "蔬菜100-法國黑巧70",
-      "price": 200,
+      "price": 1,
       "description": "100% 法國黑巧克力，濃郁香醇"
     }
   ],
   "orders": [
     {
       "id": 1,
-      "customer_id": 1,
-      "order_date": "2025-09-22",
-      "delivery_date": "2025-09-22",
-      "status": "completed",
-      "notes": ""
+      "customer_id": 3,
+      "order_date": "2025-09-26",
+      "delivery_date": "2025-09-26",
+      "status": "pending",
+      "notes": "",
+      "shipping_type": "none",
+      "shipping_fee": 0
+    },
+    {
+      "id": 2,
+      "customer_id": 2,
+      "order_date": "2025-09-26",
+      "delivery_date": "2025-09-26",
+      "status": "pending",
+      "notes": "",
+      "shipping_type": "none",
+      "shipping_fee": 0
     }
   ],
   "order_items": [
     {
       "id": 1,
       "order_id": 1,
-      "product_name": "蔬果73-亮妍莓",
+      "product_name": "蔬果73-活力紅",
       "quantity": 1,
-      "unit_price": 130,
+      "unit_price": 120,
       "special_notes": "",
-      "status": "completed"
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 2,
+      "order_id": 2,
+      "product_name": "蔬菜100-養生黑",
+      "quantity": 1,
+      "unit_price": 160,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
     }
-  ]
+  ],
+  "shippingFee": 120
 }

@@ -64,9 +64,10 @@ const Login = ({ onLogin }) => {
             color: '#2c3e50', 
             marginBottom: '10px',
             fontSize: '2rem',
-            fontWeight: '300'
+            fontWeight: '300',
+            textAlign: 'center'
           }}>
-            訂單管理系統
+            果然盈訂單管理系統
           </h1>
           <p style={{ color: '#7f8c8d', fontSize: '1rem' }}>
             請選擇您的身份登入

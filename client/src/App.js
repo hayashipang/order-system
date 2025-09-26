@@ -64,14 +64,14 @@ function App() {
         >
           廚房製作
         </button>
+        <button 
+          className={`nav-button ${currentPage === 'customers' ? 'active' : ''}`}
+          onClick={() => setCurrentPage('customers')}
+        >
+          客戶訂單
+        </button>
         {isAdmin && (
           <>
-            <button 
-              className={`nav-button ${currentPage === 'customers' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('customers')}
-            >
-              客戶訂單
-            </button>
             <button 
               className={`nav-button ${currentPage === 'products' ? 'active' : ''}`}
               onClick={() => setCurrentPage('products')}
@@ -104,9 +104,14 @@ function App() {
   return (
     <div className="App">
       <header className="header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1>訂單管理系統</h1>
-          <div style={{ color: 'white', fontSize: '14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+          <h1 style={{ margin: 0 }}>果然盈訂單管理系統</h1>
+          <div style={{ 
+            position: 'absolute', 
+            right: 0, 
+            color: 'white', 
+            fontSize: '14px' 
+          }}>
             歡迎，{user.username} ({user.role === 'admin' ? '管理者' : '廚房員工'})
           </div>
         </div>
