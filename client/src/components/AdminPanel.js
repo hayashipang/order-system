@@ -29,8 +29,12 @@ const AdminPanel = ({ user }) => {
     name: '',
     phone: '',
     address: '',
-    source: '一般客戶'
+    family_mart_address: '',
+    source: '直接來店訂購',
+    payment_method: '貨到付款',
+    order_number: ''
   });
+
 
   // 訂單歷史查詢狀態
   const [orderHistory, setOrderHistory] = useState([]);
@@ -61,7 +65,10 @@ const AdminPanel = ({ user }) => {
     name: '',
     phone: '',
     address: '',
-    source: '一般客戶'
+    family_mart_address: '',
+    source: '直接來店訂購',
+    payment_method: '貨到付款',
+    order_number: ''
   });
 
   // 編輯訂單狀態
@@ -90,6 +97,7 @@ const AdminPanel = ({ user }) => {
       console.error('載入運費設定失敗:', err);
     }
   };
+
 
   // 出貨管理相關函數
   const fetchShippingOrders = useCallback(async () => {
@@ -268,7 +276,10 @@ const AdminPanel = ({ user }) => {
       name: customer.name,
       phone: customer.phone || '',
       address: customer.address || '',
-      source: customer.source || '一般客戶'
+      family_mart_address: customer.family_mart_address || '',
+      source: customer.source || '直接來店訂購',
+      payment_method: customer.payment_method || '貨到付款',
+      order_number: customer.order_number || ''
     });
   };
 
@@ -279,7 +290,10 @@ const AdminPanel = ({ user }) => {
       name: '',
       phone: '',
       address: '',
-      source: '一般客戶'
+      family_mart_address: '',
+      source: '直接來店訂購',
+      payment_method: '貨到付款',
+      order_number: ''
     });
   };
 
@@ -431,7 +445,15 @@ const AdminPanel = ({ user }) => {
       setSuccess('客戶新增成功！');
       
       // 重置表單並重新載入客戶列表
-      setNewCustomer({ name: '', phone: '', address: '', source: '一般客戶' });
+      setNewCustomer({ 
+        name: '', 
+        phone: '', 
+        address: '', 
+        family_mart_address: '',
+        source: '直接來店訂購', 
+        payment_method: '貨到付款',
+        order_number: ''
+      });
       await fetchCustomers();
       
       // 自動切換到客戶管理頁面查看新增的客戶
@@ -592,7 +614,7 @@ const AdminPanel = ({ user }) => {
     setNewOrder({ ...newOrder, items: updatedItems });
   };
 
-  // 計算訂單總金額（只有免運費會影響我們的收入）
+  // 計算訂單總金額（包含信用卡手續費）
   const calculateTotalAmount = () => {
     const itemsTotal = newOrder.items.reduce((sum, item) => {
       return sum + (item.quantity * item.unit_price);
@@ -604,7 +626,38 @@ const AdminPanel = ({ user }) => {
     }
     // 客戶付運費給快遞公司，不計入我們的收入
     
-    return itemsTotal + shippingAdjustment;
+    // 計算信用卡手續費
+    let creditCardFee = 0;
+    if (newOrder.customer_id) {
+      const selectedCustomer = customers.find(c => c.id === parseInt(newOrder.customer_id));
+      if (selectedCustomer && selectedCustomer.payment_method === '信用卡') {
+        // 計算付費產品總金額（排除贈品）
+        const paidItemsTotal = newOrder.items
+          .filter(item => !item.is_gift)
+          .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+        
+        // 手續費 = 付費產品金額 × 2%
+        creditCardFee = Math.round(paidItemsTotal * 0.02);
+      }
+    }
+    
+    return itemsTotal + shippingAdjustment - creditCardFee;
+  };
+
+  // 計算信用卡手續費
+  const calculateCreditCardFee = () => {
+    if (!newOrder.customer_id) return 0;
+    
+    const selectedCustomer = customers.find(c => c.id === parseInt(newOrder.customer_id));
+    if (!selectedCustomer || selectedCustomer.payment_method !== '信用卡') return 0;
+    
+    // 計算付費產品總金額（排除贈品）
+    const paidItemsTotal = newOrder.items
+      .filter(item => !item.is_gift)
+      .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    
+    // 手續費 = 付費產品金額 × 2%
+    return Math.round(paidItemsTotal * 0.02);
   };
 
   const renderNewOrderForm = () => (
@@ -868,18 +921,33 @@ const AdminPanel = ({ user }) => {
           }}>
             最終總計: NT$ {calculateTotalAmount().toLocaleString()}
           </div>
-          {newOrder.shipping_type !== 'none' && (
-            <div style={{ 
-              fontSize: '14px', 
-              color: '#7f8c8d',
-              marginTop: '5px'
-            }}>
-              {newOrder.shipping_type === 'paid' ? 
-                `產品總計: NT$ ${newOrder.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0).toLocaleString()} (客戶另付運費 NT$ ${shippingFee} 給快遞公司)` :
-                `產品總計: NT$ ${newOrder.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0).toLocaleString()} - 免運費成本: NT$ ${shippingFee}`
-              }
-            </div>
-          )}
+          
+          {/* 顯示明細 */}
+          <div style={{ 
+            fontSize: '14px', 
+            color: '#7f8c8d',
+            marginTop: '5px',
+            lineHeight: '1.4'
+          }}>
+            <div>產品總計: NT$ {newOrder.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0).toLocaleString()}</div>
+            
+            {/* 信用卡手續費 */}
+            {calculateCreditCardFee() > 0 && (
+              <div style={{ color: '#e67e22', fontWeight: 'bold' }}>
+                💳 信用卡手續費扣除 (2%): NT$ {calculateCreditCardFee().toLocaleString()}
+              </div>
+            )}
+            
+            {/* 運費說明 */}
+            {newOrder.shipping_type !== 'none' && (
+              <div>
+                {newOrder.shipping_type === 'paid' ? 
+                  `運費: NT$ ${shippingFee} (客戶另付給快遞公司)` :
+                  `免運費成本: NT$ ${shippingFee}`
+                }
+              </div>
+            )}
+          </div>
         </div>
 
         <button type="submit" className="button success" disabled={loading}>
@@ -920,12 +988,23 @@ const AdminPanel = ({ user }) => {
         </div>
 
         <div className="form-group">
-          <label className="form-label">地址</label>
+          <label className="form-label">送貨地點</label>
           <textarea
             className="form-textarea"
             value={newCustomer.address}
             onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
-            placeholder="請輸入地址"
+            placeholder="請輸入送貨地點"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">全家店名</label>
+          <input
+            type="text"
+            className="form-input"
+            value={newCustomer.family_mart_address}
+            onChange={(e) => setNewCustomer({ ...newCustomer, family_mart_address: e.target.value })}
+            placeholder="請輸入全家店名"
           />
         </div>
 
@@ -937,11 +1016,40 @@ const AdminPanel = ({ user }) => {
             onChange={(e) => setNewCustomer({ ...newCustomer, source: e.target.value })}
             required
           >
-            <option value="一般客戶">一般客戶</option>
-            <option value="蝦皮">蝦皮</option>
-            <option value="IG">IG</option>
-            <option value="FB">FB</option>
+            <option value="直接來店訂購">直接來店訂購</option>
+            <option value="FB訂購">FB訂購</option>
+            <option value="IG訂購">IG訂購</option>
+            <option value="蝦皮訂購">蝦皮訂購</option>
+            <option value="全家好賣訂購">全家好賣訂購</option>
+            <option value="7-11賣貨便訂購">7-11賣貨便訂購</option>
+            <option value="其他訂購">其他訂購</option>
           </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">付款方式</label>
+          <select
+            className="form-select"
+            value={newCustomer.payment_method}
+            onChange={(e) => setNewCustomer({ ...newCustomer, payment_method: e.target.value })}
+            required
+          >
+            <option value="貨到付款">貨到付款</option>
+            <option value="信用卡">信用卡</option>
+            <option value="LinePay">LinePay</option>
+            <option value="現金">現金</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">訂單編號</label>
+          <input
+            type="text"
+            className="form-input"
+            value={newCustomer.order_number}
+            onChange={(e) => setNewCustomer({ ...newCustomer, order_number: e.target.value })}
+            placeholder="請輸入訂單編號（可選）"
+          />
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -1243,12 +1351,22 @@ const AdminPanel = ({ user }) => {
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">地址</label>
+              <label className="form-label">送貨地點</label>
               <textarea
                 className="form-textarea"
                 value={editCustomerForm.address}
                 onChange={(e) => setEditCustomerForm({ ...editCustomerForm, address: e.target.value })}
-                placeholder="請輸入地址"
+                placeholder="請輸入送貨地點"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">全家店名</label>
+              <input
+                type="text"
+                className="form-input"
+                value={editCustomerForm.family_mart_address}
+                onChange={(e) => setEditCustomerForm({ ...editCustomerForm, family_mart_address: e.target.value })}
+                placeholder="請輸入全家店名"
               />
             </div>
             <div className="form-group">
@@ -1259,11 +1377,38 @@ const AdminPanel = ({ user }) => {
                 onChange={(e) => setEditCustomerForm({ ...editCustomerForm, source: e.target.value })}
                 required
               >
-                <option value="一般客戶">一般客戶</option>
-                <option value="蝦皮">蝦皮</option>
-                <option value="IG">IG</option>
-                <option value="FB">FB</option>
+                <option value="直接來店訂購">直接來店訂購</option>
+                <option value="FB訂購">FB訂購</option>
+                <option value="IG訂購">IG訂購</option>
+                <option value="蝦皮訂購">蝦皮訂購</option>
+                <option value="全家好賣訂購">全家好賣訂購</option>
+                <option value="7-11賣貨便訂購">7-11賣貨便訂購</option>
+                <option value="其他訂購">其他訂購</option>
               </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">付款方式</label>
+              <select
+                className="form-select"
+                value={editCustomerForm.payment_method}
+                onChange={(e) => setEditCustomerForm({ ...editCustomerForm, payment_method: e.target.value })}
+                required
+              >
+                <option value="貨到付款">貨到付款</option>
+                <option value="信用卡">信用卡</option>
+                <option value="LinePay">LinePay</option>
+                <option value="現金">現金</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">訂單編號</label>
+              <input
+                type="text"
+                className="form-input"
+                value={editCustomerForm.order_number}
+                onChange={(e) => setEditCustomerForm({ ...editCustomerForm, order_number: e.target.value })}
+                placeholder="請輸入訂單編號（可選）"
+              />
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button type="submit" className="button success" disabled={loading}>
@@ -1302,10 +1447,13 @@ const AdminPanel = ({ user }) => {
               onChange={(e) => handleSourceFilter(e.target.value)}
             >
               <option value="">全部來源</option>
-              <option value="一般客戶">一般客戶</option>
-              <option value="蝦皮">蝦皮</option>
-              <option value="IG">IG</option>
-              <option value="FB">FB</option>
+              <option value="直接來店訂購">直接來店訂購</option>
+              <option value="FB訂購">FB訂購</option>
+              <option value="IG訂購">IG訂購</option>
+              <option value="蝦皮訂購">蝦皮訂購</option>
+              <option value="全家好賣訂購">全家好賣訂購</option>
+              <option value="7-11賣貨便訂購">7-11賣貨便訂購</option>
+              <option value="其他訂購">其他訂購</option>
             </select>
           </div>
         </div>
@@ -1329,17 +1477,21 @@ const AdminPanel = ({ user }) => {
           }}>
             <thead>
               <tr style={{ background: '#f8f9fa' }}>
+                <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>訂單編號</th>
                 <th style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>客戶姓名</th>
                 <th style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>聯絡電話</th>
-                <th style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>地址</th>
+                <th style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>送貨地點</th>
                 <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>來源</th>
-                <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>建立時間</th>
+                <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>付款方式</th>
                 <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.map((customer) => (
                 <tr key={customer.id} style={{ borderBottom: '1px solid #dee2e6' }}>
+                  <td style={{ padding: '15px', textAlign: 'center', color: '#666', fontSize: '14px', fontWeight: '500' }}>
+                    {customer.order_number || '-'}
+                  </td>
                   <td style={{ padding: '15px', fontWeight: '500' }}>{customer.name}</td>
                   <td style={{ padding: '15px' }}>{customer.phone || '-'}</td>
                   <td style={{ padding: '15px', color: '#666' }}>{customer.address || '-'}</td>
@@ -1349,16 +1501,29 @@ const AdminPanel = ({ user }) => {
                       borderRadius: '12px',
                       fontSize: '12px',
                       fontWeight: '500',
-                      backgroundColor: customer.source === '蝦皮' ? '#ff6b35' : 
-                                     customer.source === 'IG' ? '#e1306c' :
-                                     customer.source === 'FB' ? '#1877f2' : '#27ae60',
+                      backgroundColor: customer.source?.includes('蝦皮') ? '#ff6b35' : 
+                                     customer.source?.includes('IG') ? '#e1306c' :
+                                     customer.source?.includes('FB') ? '#1877f2' :
+                                     customer.source?.includes('全家') ? '#00a651' :
+                                     customer.source?.includes('7-11') ? '#ff6600' : '#27ae60',
                       color: 'white'
                     }}>
-                      {customer.source || '一般客戶'}
+                      {customer.source || '直接來店訂購'}
                     </span>
                   </td>
-                  <td style={{ padding: '15px', textAlign: 'center', color: '#666', fontSize: '14px' }}>
-                    {new Date(customer.created_at).toLocaleDateString('zh-TW')}
+                  <td style={{ padding: '15px', textAlign: 'center' }}>
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      backgroundColor: customer.payment_method === '信用卡' ? '#3498db' : 
+                                     customer.payment_method === 'LinePay' ? '#00c300' :
+                                     customer.payment_method === '現金' ? '#95a5a6' : '#e74c3c',
+                      color: 'white'
+                    }}>
+                      {customer.payment_method || '貨到付款'}
+                    </span>
                   </td>
                   <td style={{ padding: '15px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -1722,6 +1887,53 @@ const AdminPanel = ({ user }) => {
                       </tr>
                     )}
                     
+                    {/* 信用卡手續費項目 */}
+                    {order.credit_card_fee && order.credit_card_fee > 0 && (
+                      <tr key={`${order.id}-creditcardfee`} style={{ 
+                        backgroundColor: '#fef5e7',
+                        border: '2px solid #e67e22'
+                      }}>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {order.customer_name}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#e67e22' }}>
+                          💳 信用卡手續費
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          1
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'right' }}>
+                          ${order.credit_card_fee}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'right', fontWeight: 'bold', color: '#e67e22' }}>
+                          -${order.credit_card_fee}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          <span style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: '4px', 
+                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
+                            color: 'white',
+                            fontSize: '12px'
+                          }}>
+                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          信用卡手續費扣除
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          {/* 手續費行不需要編輯按鈕 */}
+                        </td>
+                      </tr>
+                    )}
+                    
                     {/* 無產品的情況 */}
                     {items.length === 0 && !hasFreeShipping && (
                       <tr key={order.id} style={{ 
@@ -1969,9 +2181,76 @@ const AdminPanel = ({ user }) => {
                 return (
                   <tr key={order.id}>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                      <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{order.customer_name}</div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>📞 {order.phone}</div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>📍 {order.address}</div>
+                      {/* 訂單編號 - 第一欄 */}
+                      {order.order_number && (
+                        <div style={{ 
+                          background: '#3498db', 
+                          color: 'white', 
+                          padding: '4px 8px', 
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          marginBottom: '6px',
+                          display: 'inline-block'
+                        }}>
+                          📋 {order.order_number}
+                        </div>
+                      )}
+                      
+                      {/* 客戶姓名 - 第二欄 */}
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '16px' }}>{order.customer_name}</div>
+                      
+                      {/* 聯絡電話 - 第三欄 */}
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>📞 {order.phone}</div>
+                      
+                      {/* 送貨地點 - 第四欄 */}
+                      {order.address && (
+                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>📍 {order.address}</div>
+                      )}
+                      
+                      {/* 全家店名 - 第五欄 */}
+                      {order.family_mart_address && (
+                        <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>🏪 {order.family_mart_address}</div>
+                      )}
+                      
+                      {/* 來源 - 第六欄（彩色標籤顯示） */}
+                      {order.source && (
+                        <div style={{ marginBottom: '2px' }}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            fontSize: '10px',
+                            fontWeight: '500',
+                            backgroundColor: order.source?.includes('蝦皮') ? '#ff6b35' : 
+                                           order.source?.includes('IG') ? '#e1306c' :
+                                           order.source?.includes('FB') ? '#1877f2' :
+                                           order.source?.includes('全家') ? '#00a651' :
+                                           order.source?.includes('7-11') ? '#ff6600' : '#27ae60',
+                            color: 'white'
+                          }}>
+                            🛒 {order.source}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* 付款方式 - 第七欄（彩色標籤顯示） */}
+                      {order.payment_method && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            fontSize: '10px',
+                            fontWeight: '500',
+                            backgroundColor: order.payment_method === '信用卡' ? '#3498db' : 
+                                           order.payment_method === 'LinePay' ? '#00c300' :
+                                           order.payment_method === '現金' ? '#95a5a6' : '#e74c3c',
+                            color: 'white'
+                          }}>
+                            💳 {order.payment_method}
+                          </span>
+                        </div>
+                      )}
+                      
                       {order.order_notes && (
                         <div style={{ fontSize: '12px', color: '#e67e22', marginTop: '4px' }}>
                           📝 {order.order_notes}
@@ -2025,6 +2304,11 @@ const AdminPanel = ({ user }) => {
                         {order.shipping_fee !== 0 && (
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             運費: ${order.shipping_fee}
+                          </div>
+                        )}
+                        {order.credit_card_fee && order.credit_card_fee > 0 && (
+                          <div style={{ fontSize: '12px', color: '#e67e22', fontWeight: 'bold' }}>
+                            💳 手續費扣除: ${order.credit_card_fee}
                           </div>
                         )}
                       </td>
@@ -2095,7 +2379,6 @@ const AdminPanel = ({ user }) => {
         <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
           <p>📦 該配送日期沒有訂單需要出貨</p>
         </div>
-      )}
       )}
     </div>
   );

@@ -346,10 +346,84 @@ const CustomerOrders = () => {
                     <div key={index} className="customer-card">
                       <div className="customer-header">
                         <div>
-                          <div className="customer-name">{order.customer_name}</div>
-                          <div className="customer-phone">{order.phone}</div>
-                          {order.address && <div className="customer-address">地址: {order.address}</div>}
-                          {order.source && <div className="customer-source">來源: {order.source}</div>}
+                          {/* 訂單編號 - 第一欄 */}
+                          {order.order_number && (
+                            <div style={{ 
+                              background: '#3498db', 
+                              color: 'white', 
+                              padding: '6px 12px', 
+                              borderRadius: '6px',
+                              fontSize: '14px',
+                              fontWeight: 'bold',
+                              marginBottom: '8px',
+                              display: 'inline-block'
+                            }}>
+                              📋 訂單編號: {order.order_number}
+                            </div>
+                          )}
+                          
+                          {/* 客戶姓名 - 第二欄 */}
+                          <div className="customer-name" style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>
+                            {order.customer_name}
+                          </div>
+                          
+                          {/* 聯絡電話 - 第三欄 */}
+                          <div className="customer-phone" style={{ fontSize: '16px', marginBottom: '4px' }}>
+                            📞 {order.phone}
+                          </div>
+                          
+                          {/* 送貨地點 - 第四欄 */}
+                          {order.address && (
+                            <div className="customer-address" style={{ fontSize: '14px', marginBottom: '4px' }}>
+                              📍 送貨地點: {order.address}
+                            </div>
+                          )}
+                          
+                          {/* 全家店名 - 第五欄 */}
+                          {order.family_mart_address && (
+                            <div className="customer-family-mart" style={{ fontSize: '14px', marginBottom: '4px' }}>
+                              🏪 全家店名: {order.family_mart_address}
+                            </div>
+                          )}
+                          
+                          {/* 來源 - 第六欄（彩色標籤顯示） */}
+                          {order.source && (
+                            <div style={{ marginBottom: '4px' }}>
+                              <span style={{
+                                padding: '4px 8px',
+                                borderRadius: '12px',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                backgroundColor: order.source?.includes('蝦皮') ? '#ff6b35' : 
+                                               order.source?.includes('IG') ? '#e1306c' :
+                                               order.source?.includes('FB') ? '#1877f2' :
+                                               order.source?.includes('全家') ? '#00a651' :
+                                               order.source?.includes('7-11') ? '#ff6600' : '#27ae60',
+                                color: 'white'
+                              }}>
+                                🛒 來源: {order.source}
+                              </span>
+                            </div>
+                          )}
+                          
+                          {/* 付款方式 - 第七欄（彩色標籤顯示） */}
+                          {order.payment_method && (
+                            <div style={{ marginBottom: '8px' }}>
+                              <span style={{
+                                padding: '4px 8px',
+                                borderRadius: '12px',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                backgroundColor: order.payment_method === '信用卡' ? '#3498db' : 
+                                               order.payment_method === 'LinePay' ? '#00c300' :
+                                               order.payment_method === '現金' ? '#95a5a6' : '#e74c3c',
+                                color: 'white'
+                              }}>
+                                💳 付款方式: {order.payment_method}
+                              </span>
+                            </div>
+                          )}
+                          
                           <div className="delivery-date" style={{ 
                             background: '#f39c12', 
                             color: 'white', 
@@ -375,6 +449,20 @@ const CustomerOrders = () => {
                           }}>
                             總金額: NT$ {(order.customer_total || 0).toLocaleString()}
                           </div>
+                          
+                          {/* 信用卡手續費顯示 */}
+                          {order.credit_card_fee && order.credit_card_fee > 0 && (
+                            <div style={{ 
+                              background: '#e67e22', 
+                              color: 'white', 
+                              padding: '4px 8px', 
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              💳 手續費扣除: NT$ {order.credit_card_fee.toLocaleString()}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {order.shipping_type === 'free' && (
                               <span 

@@ -184,6 +184,41 @@ app.put('/api/shipping-fee', checkDatabaseReady, (req, res) => {
   }
 });
 
+// 台灣地址相關API
+// 取得所有縣市
+app.get('/api/address/counties', (req, res) => {
+  try {
+    const addressData = JSON.parse(fs.readFileSync(path.join(__dirname, 'taiwan-address-data.json'), 'utf8'));
+    res.json(addressData.counties);
+  } catch (error) {
+    res.status(500).json({ error: '無法載入縣市資料' });
+  }
+});
+
+// 取得指定縣市的鄉鎮市區
+app.get('/api/address/districts/:county', (req, res) => {
+  try {
+    const { county } = req.params;
+    const addressData = JSON.parse(fs.readFileSync(path.join(__dirname, 'taiwan-address-data.json'), 'utf8'));
+    const districts = addressData.districts[county] || [];
+    res.json(districts);
+  } catch (error) {
+    res.status(500).json({ error: '無法載入鄉鎮市區資料' });
+  }
+});
+
+// 取得指定縣市的常用路名
+app.get('/api/address/roads/:county', (req, res) => {
+  try {
+    const { county } = req.params;
+    const addressData = JSON.parse(fs.readFileSync(path.join(__dirname, 'taiwan-address-data.json'), 'utf8'));
+    const roads = addressData.common_roads[county] || [];
+    res.json(roads);
+  } catch (error) {
+    res.status(500).json({ error: '無法載入路名資料' });
+  }
+});
+
 // 新增產品
 app.post('/api/products', (req, res) => {
   const { name, price, description } = req.body;
@@ -395,13 +430,17 @@ app.get('/api/orders/customers/:date', (req, res) => {
           customer_name: customer.name,
           phone: customer.phone,
           address: customer.address,
+          family_mart_address: customer.family_mart_address || '',
           source: customer.source,
+          order_number: customer.order_number || '',
+          payment_method: customer.payment_method || '貨到付款',
           order_id: order.id,
           delivery_date: order.delivery_date,
           status: order.status === 'completed' ? 'shipped' : order.status,
           order_notes: order.notes,
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
+          credit_card_fee: order.credit_card_fee || 0,
           items: [],
           customer_total: 0,
           all_items_completed: true
@@ -435,6 +474,12 @@ app.get('/api/orders/customers/:date', (req, res) => {
       if (order.shipping_fee && order.shipping_fee < 0) {
         groupedOrders[orderKey].customer_total += order.shipping_fee;
         totalDailyAmount += order.shipping_fee;
+      }
+      
+      // 扣除信用卡手續費（從我們的收入中扣除）
+      if (order.credit_card_fee && order.credit_card_fee > 0) {
+        groupedOrders[orderKey].customer_total -= order.credit_card_fee;
+        totalDailyAmount -= order.credit_card_fee;
       }
       // 客戶付運費給快遞公司，不計入我們的收入
     });
@@ -488,7 +533,10 @@ app.get('/api/orders/delivery/:date', (req, res) => {
           customer_name: customer.name,
           phone: customer.phone,
           address: customer.address,
+          family_mart_address: customer.family_mart_address || '',
           source: customer.source,
+          order_number: customer.order_number || '',
+          payment_method: customer.payment_method || '貨到付款',
           order_id: order.id,
           order_date: order.order_date,
           delivery_date: order.delivery_date,
@@ -496,6 +544,7 @@ app.get('/api/orders/delivery/:date', (req, res) => {
           order_notes: order.notes,
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
+          credit_card_fee: order.credit_card_fee || 0,
           items: [],
           customer_total: 0,
           all_items_completed: true
@@ -529,6 +578,12 @@ app.get('/api/orders/delivery/:date', (req, res) => {
       if (order.shipping_fee && order.shipping_fee < 0) {
         groupedOrders[orderKey].customer_total += order.shipping_fee;
         totalDailyAmount += order.shipping_fee;
+      }
+      
+      // 扣除信用卡手續費（從我們的收入中扣除）
+      if (order.credit_card_fee && order.credit_card_fee > 0) {
+        groupedOrders[orderKey].customer_total -= order.credit_card_fee;
+        totalDailyAmount -= order.credit_card_fee;
       }
     });
     
@@ -759,7 +814,15 @@ app.get('/api/customers', checkDatabaseReady, (req, res) => {
 
 // 新增客戶
 app.post('/api/customers', (req, res) => {
-  const { name, phone, address, source } = req.body;
+  const { 
+    name, 
+    phone, 
+    address, 
+    family_mart_address,
+    source, 
+    payment_method,
+    order_number
+  } = req.body;
   
   try {
     const newCustomer = {
@@ -767,7 +830,10 @@ app.post('/api/customers', (req, res) => {
       name,
       phone,
       address,
-      source: source || '一般客戶'
+      family_mart_address: family_mart_address || '',
+      source: source || '直接來店訂購',
+      payment_method: payment_method || '貨到付款',
+      order_number: order_number || ''
     };
     
     db.customers.push(newCustomer);
@@ -782,7 +848,15 @@ app.post('/api/customers', (req, res) => {
 // 更新客戶
 app.put('/api/customers/:id', (req, res) => {
   const { id } = req.params;
-  const { name, phone, address, source } = req.body;
+  const { 
+    name, 
+    phone, 
+    address, 
+    family_mart_address,
+    source, 
+    payment_method,
+    order_number
+  } = req.body;
   
   try {
     const customerIndex = db.customers.findIndex(c => c.id === parseInt(id));
@@ -796,11 +870,23 @@ app.put('/api/customers/:id', (req, res) => {
       name,
       phone,
       address,
-      source
+      family_mart_address: family_mart_address || '',
+      source,
+      payment_method: payment_method || '貨到付款',
+      order_number: order_number || ''
     };
     
     saveData();
-    res.json({ id: parseInt(id), name, phone, address, source });
+    res.json({ 
+      id: parseInt(id), 
+      name, 
+      phone, 
+      address, 
+      family_mart_address,
+      source, 
+      payment_method,
+      order_number
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -882,6 +968,7 @@ app.get('/api/orders/history', (req, res) => {
           notes: order.notes,
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
+          credit_card_fee: order.credit_card_fee || 0,
           customer_name: customer ? customer.name : '未知客戶',
           phone: customer ? customer.phone : '',
           items: orderItems.map(item => ({
@@ -936,6 +1023,25 @@ app.post('/api/orders', (req, res) => {
   const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee } = req.body;
   
   try {
+    // 取得客戶資料以檢查付款方式
+    const customer = db.customers.find(c => c.id === parseInt(customer_id));
+    if (!customer) {
+      res.status(404).json({ error: '客戶不存在' });
+      return;
+    }
+
+    // 計算信用卡手續費
+    let creditCardFee = 0;
+    if (customer.payment_method === '信用卡') {
+      // 計算付費產品總金額（排除贈品）
+      const paidItemsTotal = items
+        .filter(item => !item.is_gift)
+        .reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0);
+      
+      // 手續費 = 付費產品金額 × 2%
+      creditCardFee = Math.round(paidItemsTotal * 0.02);
+    }
+
     const newOrder = {
       id: Math.max(...db.orders.map(o => o.id), 0) + 1,
       customer_id: parseInt(customer_id),
@@ -944,7 +1050,8 @@ app.post('/api/orders', (req, res) => {
       status: 'pending',
       notes,
       shipping_type: shipping_type || 'none', // 'none', 'paid', 'free'
-      shipping_fee: shipping_fee || 0
+      shipping_fee: shipping_fee || 0,
+      credit_card_fee: creditCardFee // 新增信用卡手續費欄位
     };
     
     db.orders.push(newOrder);
@@ -965,7 +1072,12 @@ app.post('/api/orders', (req, res) => {
     });
     
     saveData();
-    res.json({ id: newOrder.id, message: '訂單建立成功' });
+    res.json({ 
+      id: newOrder.id, 
+      message: '訂單建立成功',
+      credit_card_fee: creditCardFee,
+      total_amount: items.reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0) + (shipping_fee || 0) - creditCardFee
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -982,6 +1094,25 @@ app.put('/api/orders/:id', (req, res) => {
       res.status(404).json({ error: '訂單不存在' });
       return;
     }
+
+    // 取得客戶資料以檢查付款方式
+    const customer = db.customers.find(c => c.id === parseInt(customer_id));
+    if (!customer) {
+      res.status(404).json({ error: '客戶不存在' });
+      return;
+    }
+
+    // 計算信用卡手續費
+    let creditCardFee = 0;
+    if (customer.payment_method === '信用卡') {
+      // 計算付費產品總金額（排除贈品）
+      const paidItemsTotal = items
+        .filter(item => !item.is_gift)
+        .reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0);
+      
+      // 手續費 = 付費產品金額 × 2%
+      creditCardFee = Math.round(paidItemsTotal * 0.02);
+    }
     
     // 更新訂單基本資訊
     db.orders[orderIndex] = {
@@ -991,7 +1122,8 @@ app.put('/api/orders/:id', (req, res) => {
       delivery_date,
       notes,
       shipping_type: shipping_type || 'none',
-      shipping_fee: shipping_fee || 0
+      shipping_fee: shipping_fee || 0,
+      credit_card_fee: creditCardFee // 更新信用卡手續費
     };
     
     // 刪除舊的訂單項目
@@ -1013,7 +1145,12 @@ app.put('/api/orders/:id', (req, res) => {
     });
     
     saveData();
-    res.json({ message: '訂單更新成功', order: db.orders[orderIndex] });
+    res.json({ 
+      message: '訂單更新成功', 
+      order: db.orders[orderIndex],
+      credit_card_fee: creditCardFee,
+      total_amount: items.reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0) + (shipping_fee || 0) - creditCardFee
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

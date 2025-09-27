@@ -16,10 +16,13 @@
   "customers": [
     {
       "id": 1,
-      "name": "安安",
-      "phone": "0982630779",
-      "address": "台中市南屯區文心路一段214號3F-6",
-      "source": "一般客戶"
+      "name": "1",
+      "phone": "1",
+      "address": "1",
+      "family_mart_address": "",
+      "source": "蝦皮訂購",
+      "payment_method": "信用卡",
+      "order_number": "1"
     }
   ],
   "products": [
@@ -86,39 +89,20 @@
       "delivery_date": "2025-09-27",
       "status": "pending",
       "notes": "",
-      "shipping_type": "none",
-      "shipping_fee": 0
-    },
-    {
-      "id": 2,
-      "customer_id": 1,
-      "order_date": "2025-09-27",
-      "delivery_date": "2025-09-27",
-      "status": "pending",
-      "notes": "",
-      "shipping_type": "none",
-      "shipping_fee": 0
+      "shipping_type": "paid",
+      "shipping_fee": 0,
+      "credit_card_fee": 2
     }
   ],
   "order_items": [
     {
       "id": 1,
       "order_id": 1,
-      "product_name": "蔬菜73-幸運果",
-      "quantity": 100,
+      "product_name": "蔬果73-活力紅",
+      "quantity": 1,
       "unit_price": 120,
       "special_notes": "",
-      "status": "completed",
-      "is_gift": false
-    },
-    {
-      "id": 2,
-      "order_id": 2,
-      "product_name": "蔬菜73-幸運果",
-      "quantity": 20,
-      "unit_price": 120,
-      "special_notes": "",
-      "status": "completed",
+      "status": "pending",
       "is_gift": false
     }
   ],
