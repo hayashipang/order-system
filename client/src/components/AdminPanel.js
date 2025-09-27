@@ -923,9 +923,9 @@ const AdminPanel = ({ user }) => {
           </div>
           
           {/* 顯示明細 */}
-          <div style={{ 
-            fontSize: '14px', 
-            color: '#7f8c8d',
+            <div style={{ 
+              fontSize: '14px', 
+              color: '#7f8c8d',
             marginTop: '5px',
             lineHeight: '1.4'
           }}>
@@ -941,12 +941,12 @@ const AdminPanel = ({ user }) => {
             {/* 運費說明 */}
             {newOrder.shipping_type !== 'none' && (
               <div>
-                {newOrder.shipping_type === 'paid' ? 
+              {newOrder.shipping_type === 'paid' ? 
                   `運費: NT$ ${shippingFee} (客戶另付給快遞公司)` :
                   `免運費成本: NT$ ${shippingFee}`
-                }
-              </div>
-            )}
+              }
+            </div>
+          )}
           </div>
         </div>
 
@@ -1614,9 +1614,11 @@ const AdminPanel = ({ user }) => {
             onChange={(e) => handleHistoryCustomerSearch(e.target.value)}
           />
         </div>
-        <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
-          找到 {filteredHistoryCustomers.length} 位客戶
-        </div>
+        {filteredHistoryCustomers.length > 0 && (
+          <div style={{ fontSize: '14px', color: '#666', marginTop: '5px' }}>
+            找到 {filteredHistoryCustomers.length} 位客戶
+          </div>
+        )}
       </div>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
@@ -1804,7 +1806,7 @@ const AdminPanel = ({ user }) => {
                           {item.special_notes || order.notes}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                          {itemIndex === 0 && (
+                          {itemIndex === 0 ? (
                             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                               <button
                                 onClick={() => handleEditOrder(order.id)}
@@ -1835,13 +1837,13 @@ const AdminPanel = ({ user }) => {
                                 🗑️ 刪除
                               </button>
                             </div>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     ))}
                     
                     {/* 免運費項目 */}
-                    {hasFreeShipping && (
+                    {hasFreeShipping ? (
                       <tr key={`${order.id}-freeshipping`} style={{ 
                         backgroundColor: '#fff3cd',
                         border: '2px solid #ffc107'
@@ -1885,10 +1887,10 @@ const AdminPanel = ({ user }) => {
                           {/* 免運費行不需要編輯按鈕 */}
                         </td>
                       </tr>
-                    )}
+                    ) : null}
                     
                     {/* 信用卡手續費項目 */}
-                    {order.credit_card_fee && order.credit_card_fee > 0 && (
+                    {order.credit_card_fee && order.credit_card_fee > 0 ? (
                       <tr key={`${order.id}-creditcardfee`} style={{ 
                         backgroundColor: '#fef5e7',
                         border: '2px solid #e67e22'
@@ -1932,10 +1934,10 @@ const AdminPanel = ({ user }) => {
                           {/* 手續費行不需要編輯按鈕 */}
                         </td>
                       </tr>
-                    )}
+                    ) : null}
                     
-                    {/* 無產品的情況 */}
-                    {items.length === 0 && !hasFreeShipping && (
+                    {/* 無產品的情況 - 已隱藏，避免顯示無意義的 "0" */}
+                    {/* {items.length === 0 && !hasFreeShipping && (
                       <tr key={order.id} style={{ 
                         backgroundColor: orderIndex % 2 === 0 ? 'white' : '#f8f9fa' 
                       }}>
@@ -2007,7 +2009,7 @@ const AdminPanel = ({ user }) => {
                           </div>
                         </td>
                       </tr>
-                    )}
+                    )} */}
                   </React.Fragment>
                 );
               })}

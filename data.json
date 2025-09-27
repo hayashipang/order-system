@@ -20,8 +20,8 @@
       "phone": "1",
       "address": "1",
       "family_mart_address": "",
-      "source": "蝦皮訂購",
-      "payment_method": "信用卡",
+      "source": "直接來店訂購",
+      "payment_method": "貨到付款",
       "order_number": "1"
     }
   ],
@@ -89,18 +89,91 @@
       "delivery_date": "2025-09-27",
       "status": "pending",
       "notes": "",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0
+    },
+    {
+      "id": 2,
+      "customer_id": 1,
+      "order_date": "2025-09-27",
+      "delivery_date": "2025-09-27",
+      "status": "pending",
+      "notes": "",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0
+    },
+    {
+      "id": 3,
+      "customer_id": 1,
+      "order_date": "2025-09-27",
+      "delivery_date": "2025-09-27",
+      "status": "pending",
+      "notes": "",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0
+    },
+    {
+      "id": 4,
+      "customer_id": 1,
+      "order_date": "2025-09-27",
+      "delivery_date": "2025-09-27",
+      "status": "pending",
+      "notes": "",
       "shipping_type": "paid",
       "shipping_fee": 0,
-      "credit_card_fee": 2
+      "credit_card_fee": 0
     }
   ],
   "order_items": [
     {
       "id": 1,
       "order_id": 1,
+      "product_name": "蔬果73-元氣綠(前端測試)",
+      "quantity": 1,
+      "unit_price": 120,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 2,
+      "order_id": 2,
+      "product_name": "蔬菜73-幸運果",
+      "quantity": 1,
+      "unit_price": 120,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 3,
+      "order_id": 3,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 150,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 4,
+      "order_id": 4,
       "product_name": "蔬果73-活力紅",
       "quantity": 1,
       "unit_price": 120,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 5,
+      "order_id": 4,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 150,
       "special_notes": "",
       "status": "pending",
       "is_gift": false
