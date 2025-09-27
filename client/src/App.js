@@ -39,7 +39,7 @@ function App() {
         case 'customers':
           return <CustomerOrders />;
         case 'admin':
-          return <AdminPanel />;
+          return <AdminPanel user={user} />;
         case 'products':
           return <ProductManagement />;
         default:
@@ -64,12 +64,21 @@ function App() {
         >
           廚房製作
         </button>
-        <button 
-          className={`nav-button ${currentPage === 'customers' ? 'active' : ''}`}
-          onClick={() => setCurrentPage('customers')}
-        >
-          客戶訂單
-        </button>
+        {isAdmin ? (
+          <button 
+            className={`nav-button ${currentPage === 'customers' ? 'active' : ''}`}
+            onClick={() => setCurrentPage('customers')}
+          >
+            客戶訂單
+          </button>
+        ) : (
+          <button 
+            className={`nav-button ${currentPage === 'admin' ? 'active' : ''}`}
+            onClick={() => setCurrentPage('admin')}
+          >
+            廚房出貨訂單
+          </button>
+        )}
         {isAdmin && (
           <>
             <button 

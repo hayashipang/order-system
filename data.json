@@ -15,24 +15,17 @@
   ],
   "customers": [
     {
-      "id": 2,
-      "name": "林志邦",
-      "phone": "0938090857",
-      "address": "台中市南屯區文心路一段214號3F-6",
-      "source": "蝦皮"
-    },
-    {
-      "id": 3,
-      "name": "白雅婷",
+      "id": 1,
+      "name": "安安",
       "phone": "0982630779",
       "address": "台中市南屯區文心路一段214號3F-6",
-      "source": "FB"
+      "source": "一般客戶"
     }
   ],
   "products": [
     {
       "id": 1,
-      "name": "蔬果73-元氣綠",
+      "name": "蔬果73-元氣綠(前端測試)",
       "price": 120,
       "description": "綠色蔬果系列，富含維生素"
     },
@@ -77,14 +70,20 @@
       "name": "蔬菜100-法國黑巧70",
       "price": 1,
       "description": "100% 法國黑巧克力，濃郁香醇"
+    },
+    {
+      "id": 9,
+      "name": "隨機送",
+      "price": 0,
+      "description": ""
     }
   ],
   "orders": [
     {
       "id": 1,
-      "customer_id": 3,
-      "order_date": "2025-09-26",
-      "delivery_date": "2025-09-26",
+      "customer_id": 1,
+      "order_date": "2025-09-27",
+      "delivery_date": "2025-09-27",
       "status": "pending",
       "notes": "",
       "shipping_type": "none",
@@ -92,9 +91,9 @@
     },
     {
       "id": 2,
-      "customer_id": 2,
-      "order_date": "2025-09-26",
-      "delivery_date": "2025-09-26",
+      "customer_id": 1,
+      "order_date": "2025-09-27",
+      "delivery_date": "2025-09-27",
       "status": "pending",
       "notes": "",
       "shipping_type": "none",
@@ -105,21 +104,21 @@
     {
       "id": 1,
       "order_id": 1,
-      "product_name": "蔬果73-活力紅",
-      "quantity": 1,
+      "product_name": "蔬菜73-幸運果",
+      "quantity": 100,
       "unit_price": 120,
       "special_notes": "",
-      "status": "pending",
+      "status": "completed",
       "is_gift": false
     },
     {
       "id": 2,
       "order_id": 2,
-      "product_name": "蔬菜100-養生黑",
-      "quantity": 1,
-      "unit_price": 160,
+      "product_name": "蔬菜73-幸運果",
+      "quantity": 20,
+      "unit_price": 120,
       "special_notes": "",
-      "status": "pending",
+      "status": "completed",
       "is_gift": false
     }
   ],

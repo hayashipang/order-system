@@ -224,6 +224,9 @@ app.put('/api/products/:id', (req, res) => {
     console.log('找到產品，索引:', productIndex);
     console.log('更新前產品:', db.products[productIndex]);
     
+    // 保存舊的產品名稱
+    const oldProductName = db.products[productIndex].name;
+    
     db.products[productIndex] = {
       ...db.products[productIndex],
       name,
@@ -231,10 +234,35 @@ app.put('/api/products/:id', (req, res) => {
       description
     };
     
+    // 如果產品名稱改變了，同時更新相關的訂單項目
+    let updatedItemsCount = 0;
+    console.log('檢查產品名稱是否改變:', { oldName: oldProductName, newName: name, changed: oldProductName !== name });
+    
+    if (oldProductName !== name) {
+      console.log('產品名稱改變，更新相關訂單項目:', { oldName: oldProductName, newName: name });
+      console.log('當前訂單項目數量:', db.order_items.length);
+      
+      // 更新所有包含舊產品名稱的訂單項目
+      db.order_items.forEach((item, index) => {
+        console.log(`檢查訂單項目 ${index}:`, { product_name: item.product_name, matches: item.product_name === oldProductName });
+        if (item.product_name === oldProductName) {
+          console.log('找到匹配的訂單項目，更新中...');
+          item.product_name = name;
+          updatedItemsCount++;
+        }
+      });
+      
+      console.log('已更新訂單項目數量:', updatedItemsCount);
+    }
+    
     console.log('更新後產品:', db.products[productIndex]);
     
     saveData();
-    res.json({ message: '產品更新成功', product: db.products[productIndex] });
+    res.json({ 
+      message: '產品更新成功', 
+      product: db.products[productIndex],
+      updatedOrderItems: updatedItemsCount
+    });
   } catch (error) {
     console.error('更新產品錯誤:', error);
     res.status(500).json({ error: error.message });
@@ -362,6 +390,7 @@ app.get('/api/orders/customers/:date', (req, res) => {
       
       if (!groupedOrders[orderKey]) {
         groupedOrders[orderKey] = {
+          id: order.id, // 添加 id 欄位以保持一致性
           customer_id: customerId,
           customer_name: customer.name,
           phone: customer.phone,
@@ -415,6 +444,176 @@ app.get('/api/orders/customers/:date', (req, res) => {
       totalAmount: totalDailyAmount
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得指定配送日期的訂單（用於出貨管理）
+app.get('/api/orders/delivery/:date', (req, res) => {
+  const { date } = req.params;
+  
+  try {
+    console.log('請求配送日期:', date);
+    console.log('所有訂單:', db.orders);
+    
+    // 取得指定配送日期的訂單
+    const orders = db.orders.filter(order => {
+      const deliveryDate = new Date(order.delivery_date).toISOString().split('T')[0];
+      const requestDate = new Date(date).toISOString().split('T')[0];
+      return deliveryDate === requestDate || order.delivery_date === date;
+    });
+    
+    console.log('匹配的配送訂單:', orders);
+    const orderIds = orders.map(order => order.id);
+    
+    // 取得這些訂單的項目
+    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    console.log('訂單項目:', orderItems);
+    
+    // 按客戶和訂單分組並計算金額
+    const groupedOrders = {};
+    let totalDailyAmount = 0;
+    
+    orders.forEach(order => {
+      const customer = db.customers.find(c => c.id === order.customer_id);
+      if (!customer) return;
+      
+      const customerId = customer.id;
+      const orderKey = `${customerId}_${order.id}`;
+      
+      if (!groupedOrders[orderKey]) {
+        groupedOrders[orderKey] = {
+          id: order.id,
+          customer_id: customerId,
+          customer_name: customer.name,
+          phone: customer.phone,
+          address: customer.address,
+          source: customer.source,
+          order_id: order.id,
+          order_date: order.order_date,
+          delivery_date: order.delivery_date,
+          status: order.status === 'completed' ? 'shipped' : order.status,
+          order_notes: order.notes,
+          shipping_type: order.shipping_type || 'none',
+          shipping_fee: order.shipping_fee || 0,
+          items: [],
+          customer_total: 0,
+          all_items_completed: true
+        };
+      }
+      
+      // 取得該訂單的項目
+      const items = orderItems.filter(item => item.order_id === order.id);
+      items.forEach(item => {
+        const itemTotal = item.quantity * item.unit_price;
+        groupedOrders[orderKey].items.push({
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          item_total: itemTotal,
+          special_notes: item.special_notes,
+          item_status: item.status,
+          is_gift: item.is_gift
+        });
+        
+        groupedOrders[orderKey].customer_total += itemTotal;
+        totalDailyAmount += itemTotal;
+        
+        // 檢查是否所有項目都已完成
+        if (item.status !== 'completed') {
+          groupedOrders[orderKey].all_items_completed = false;
+        }
+      });
+      
+      // 只有免運費（負數）會影響我們的收入
+      if (order.shipping_fee && order.shipping_fee < 0) {
+        groupedOrders[orderKey].customer_total += order.shipping_fee;
+        totalDailyAmount += order.shipping_fee;
+      }
+    });
+    
+    res.json({
+      orders: Object.values(groupedOrders),
+      totalAmount: totalDailyAmount
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得未來一週出貨概覽
+app.get('/api/orders/shipping-weekly/:startDate', (req, res) => {
+  const { startDate } = req.params;
+  
+  try {
+    console.log('請求週出貨概覽開始日期:', startDate);
+    
+    // 計算一週的日期範圍
+    const start = new Date(startDate);
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(start);
+      date.setDate(start.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    console.log('週出貨概覽日期範圍:', dates);
+    
+    // 建立日期對應的結果
+    const result = {};
+    dates.forEach(date => {
+      result[date] = {
+        date: date,
+        order_count: 0,
+        item_count: 0,
+        total_quantity: 0,
+        total_amount: 0,
+        pending_orders: 0,
+        shipped_orders: 0
+      };
+    });
+    
+    // 查詢每一天的配送訂單
+    dates.forEach(date => {
+      const dayOrders = db.orders.filter(order => {
+        const deliveryDate = new Date(order.delivery_date).toISOString().split('T')[0];
+        return deliveryDate === date;
+      });
+      
+      const orderIds = dayOrders.map(order => order.id);
+      const dayItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+      
+      // 計算金額
+      let totalAmount = 0;
+      dayOrders.forEach(order => {
+        const orderItems = dayItems.filter(item => item.order_id === order.id);
+        const orderTotal = orderItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+        totalAmount += orderTotal;
+        
+        // 運費處理
+        if (order.shipping_fee && order.shipping_fee < 0) {
+          totalAmount += order.shipping_fee;
+        }
+      });
+      
+      result[date] = {
+        date: date,
+        order_count: dayOrders.length,
+        item_count: dayItems.length,
+        total_quantity: dayItems.reduce((sum, item) => sum + item.quantity, 0),
+        total_amount: totalAmount,
+        pending_orders: dayOrders.filter(order => order.status === 'pending').length,
+        shipped_orders: dayOrders.filter(order => order.status === 'completed' || order.status === 'shipped').length
+      };
+    });
+    
+    res.json({
+      start_date: startDate,
+      dates: dates,
+      weekly_data: Object.values(result)
+    });
+  } catch (error) {
+    console.error('週出貨概覽錯誤:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -899,6 +1098,42 @@ app.delete('/api/orders/:id', (req, res) => {
   }
 });
 
+// 更新訂單出貨狀態
+app.put('/api/orders/:id/shipping-status', checkDatabaseReady, (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  try {
+    console.log('更新訂單出貨狀態:', { orderId: id, status });
+    
+    const orderIndex = db.orders.findIndex(order => order.id === parseInt(id));
+    if (orderIndex === -1) {
+      return res.status(404).json({ error: '訂單不存在' });
+    }
+    
+    // 更新訂單狀態
+    db.orders[orderIndex].status = status;
+    
+    // 如果標記為已出貨，同時更新所有訂單項目的狀態
+    if (status === 'completed') {
+      db.order_items.forEach(item => {
+        if (item.order_id === parseInt(id)) {
+          item.status = 'completed';
+        }
+      });
+    }
+    
+    saveData();
+    res.json({ 
+      message: '訂單出貨狀態更新成功',
+      order: db.orders[orderIndex]
+    });
+  } catch (error) {
+    console.error('更新訂單出貨狀態錯誤:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 更新產品製作狀態
 app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, (req, res) => {
   const { date, productName } = req.params;
@@ -924,20 +1159,9 @@ app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady,
     });
     console.log('更新的項目數量:', updatedCount);
     
-    // 檢查該訂單的所有產品是否都已完成，如果是則更新訂單狀態
-    orders.forEach(order => {
-      const orderItems = db.order_items.filter(item => item.order_id === order.id);
-      const total = orderItems.length;
-      const completed = orderItems.filter(item => item.status === 'completed').length;
-      
-      // 如果所有產品都已完成，更新訂單狀態為 completed
-      if (total === completed && order.status !== 'completed') {
-        const orderIndex = db.orders.findIndex(o => o.id === order.id);
-        if (orderIndex !== -1) {
-          db.orders[orderIndex].status = 'completed';
-        }
-      }
-    });
+    // 廚房製作完成不應該自動更新訂單狀態
+    // 訂單狀態應該由出貨管理來控制
+    // 這裡只更新製作狀態，不影響訂單的整體狀態
     
     saveData();
     res.json({ message: '產品狀態更新成功' });
@@ -1003,11 +1227,28 @@ app.get('/api/orders/history/export/csv', (req, res) => {
               item.quantity,
               item.unit_price,
               subtotal,
-              order.shipping_fee || 0,
+              '', // 運費欄位留空，因為會單獨顯示
               item.status === 'completed' ? '已完成' : '進行中',
               item.special_notes || order.notes || ''
             ]);
           });
+          
+          // 如果有運費，將運費作為獨立項目顯示
+          if (order.shipping_fee && order.shipping_fee !== 0) {
+            const shippingDescription = order.shipping_fee < 0 ? '免運費優惠' : '運費';
+            csvData.push([
+              customerName,
+              order.order_date,
+              order.delivery_date,
+              shippingDescription,
+              1,
+              order.shipping_fee,
+              order.shipping_fee,
+              '', // 運費欄位留空
+              order.status === 'completed' ? '已完成' : '進行中',
+              order.notes || ''
+            ]);
+          }
         }
       });
     

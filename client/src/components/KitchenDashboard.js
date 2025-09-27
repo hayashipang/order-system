@@ -10,6 +10,7 @@ const KitchenDashboard = () => {
   const [updatingStatus, setUpdatingStatus] = useState({});
   const [showWeeklyView, setShowWeeklyView] = useState(false);
   const [weeklyData, setWeeklyData] = useState([]);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
   
 
   const fetchProductionList = async (date) => {
@@ -24,6 +25,14 @@ const KitchenDashboard = () => {
       setProductionList([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setLastRefresh(new Date());
+    fetchProductionList(selectedDate);
+    if (showWeeklyView) {
+      fetchWeeklyData();
     }
   };
 
@@ -56,6 +65,14 @@ const KitchenDashboard = () => {
 
   const getTotalQuantity = () => {
     return productionList.reduce((total, item) => total + item.total_quantity, 0);
+  };
+
+  const getTotalPendingQuantity = () => {
+    return productionList.reduce((total, item) => total + item.pending_quantity, 0);
+  };
+
+  const getTotalCompletedQuantity = () => {
+    return productionList.reduce((total, item) => total + item.completed_quantity, 0);
   };
 
   const isFullyCompleted = (item) => {
@@ -142,7 +159,27 @@ const KitchenDashboard = () => {
   return (
     <div>
       <div className="card">
-        <h2>廚房工作台</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ margin: 0 }}>廚房工作台</h2>
+          <button 
+            onClick={handleRefresh}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            title={`最後更新: ${lastRefresh.toLocaleTimeString()}`}
+          >
+            🔄 刷新數據
+          </button>
+        </div>
         
         {/* 標籤切換 */}
         
@@ -276,22 +313,47 @@ const KitchenDashboard = () => {
             {productionList.length > 0 ? (
               <>
                 <div style={{ marginBottom: '20px', padding: '15px', background: '#e8f4fd', borderRadius: '8px' }}>
-                  <strong>總計: {getTotalQuantity()} 瓶</strong>
-                  <span style={{ marginLeft: '20px', color: '#666' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                    <div>
+                      <strong style={{ fontSize: '18px' }}>總計: {getTotalQuantity()} 瓶</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
+                      <span style={{ color: '#dc3545', fontWeight: 'bold' }}>
+                        待製作: {getTotalPendingQuantity()} 瓶
+                      </span>
+                      <span style={{ color: '#28a745', fontWeight: 'bold' }}>
+                        已完成: {getTotalCompletedQuantity()} 瓶
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '8px', color: '#666', fontSize: '14px' }}>
                     {new Date(selectedDate).toLocaleDateString('zh-TW', { 
                       year: 'numeric', 
                       month: 'long', 
                       day: 'numeric',
                       weekday: 'long'
                     })}
-                  </span>
+                  </div>
                 </div>
                 
                 <div className="production-list">
                   {productionList.map((item, index) => (
-                    <div key={index} className="production-item">
+                    <div 
+                      key={index} 
+                      className="production-item"
+                      style={{
+                        border: isFullyCompleted(item) ? '3px solid #28a745' : '1px solid #dee2e6',
+                        backgroundColor: isFullyCompleted(item) ? '#f8fff9' : 'white',
+                        boxShadow: isFullyCompleted(item) ? '0 4px 8px rgba(40, 167, 69, 0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
+                      }}
+                    >
                       <div className="product-info">
                         <div className="product-name">
+                          {isFullyCompleted(item) && (
+                            <span style={{ color: '#28a745', marginRight: '8px', fontSize: '18px' }}>
+                              ✅
+                            </span>
+                          )}
                           {item.is_gift ? (
                             <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
                               🎁 {item.product_name} (贈送)
@@ -310,14 +372,15 @@ const KitchenDashboard = () => {
                           <div 
                             className="status-value"
                             style={{
-                              backgroundColor: isFullyCompleted(item) ? '#e9ecef' : '#dc3545',
-                              color: isFullyCompleted(item) ? '#6c757d' : 'white',
+                              backgroundColor: item.pending_quantity > 0 ? '#dc3545' : '#e9ecef',
+                              color: item.pending_quantity > 0 ? 'white' : '#6c757d',
                               padding: '8px 12px',
                               borderRadius: '6px',
                               fontSize: '16px',
                               fontWeight: 'bold',
                               textAlign: 'center',
-                              minWidth: '80px'
+                              minWidth: '80px',
+                              border: item.pending_quantity > 0 ? '2px solid #c82333' : 'none'
                             }}
                           >
                             {item.pending_quantity}
@@ -328,14 +391,15 @@ const KitchenDashboard = () => {
                           <div 
                             className="status-value"
                             style={{
-                              backgroundColor: isFullyCompleted(item) ? '#28a745' : '#e9ecef',
-                              color: isFullyCompleted(item) ? 'white' : '#6c757d',
+                              backgroundColor: item.completed_quantity > 0 ? '#28a745' : '#e9ecef',
+                              color: item.completed_quantity > 0 ? 'white' : '#6c757d',
                               padding: '8px 12px',
                               borderRadius: '6px',
                               fontSize: '16px',
                               fontWeight: 'bold',
                               textAlign: 'center',
-                              minWidth: '80px'
+                              minWidth: '80px',
+                              border: item.completed_quantity > 0 ? '2px solid #1e7e34' : 'none'
                             }}
                           >
                             {item.completed_quantity}

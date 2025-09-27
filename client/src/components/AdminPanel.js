@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import config from '../config';
 
-const AdminPanel = () => {
-  const [activeTab, setActiveTab] = useState('new-order');
+const AdminPanel = ({ user }) => {
+  const [activeTab, setActiveTab] = useState(user?.role === 'kitchen' ? 'shipping-management' : 'new-order');
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +43,12 @@ const AdminPanel = () => {
   // 訂單歷史客戶搜尋狀態
   const [historyCustomerSearchTerm, setHistoryCustomerSearchTerm] = useState('');
   const [filteredHistoryCustomers, setFilteredHistoryCustomers] = useState([]);
+
+  // 出貨管理狀態
+  const [shippingOrders, setShippingOrders] = useState([]);
+  const [shippingDate, setShippingDate] = useState(new Date().toISOString().split('T')[0]);
+  const [weeklyShippingData, setWeeklyShippingData] = useState([]);
+  const [showWeeklyOverview, setShowWeeklyOverview] = useState(false);
 
   // 客戶搜尋狀態
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
@@ -85,10 +91,78 @@ const AdminPanel = () => {
     }
   };
 
-  // 當切換到新增訂單頁面時，重新載入客戶列表
+  // 出貨管理相關函數
+  const fetchShippingOrders = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      console.log('正在查詢出貨訂單，日期:', shippingDate);
+      // 查詢指定配送日期的訂單，而不是訂單日期
+      const response = await axios.get(`${config.apiUrl}/api/orders/delivery/${shippingDate}`);
+      console.log('出貨訂單查詢結果:', response.data);
+      setShippingOrders(response.data.orders || []);
+      setSuccess(`已載入 ${response.data.orders?.length || 0} 筆出貨訂單`);
+    } catch (err) {
+      console.error('載入出貨訂單錯誤:', err);
+      setError('載入出貨訂單失敗: ' + (err.response?.data?.error || err.message));
+      setShippingOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [shippingDate]);
+
+  const handleUpdateShippingStatus = async (orderId, status) => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await axios.put(`${config.apiUrl}/api/orders/${orderId}/shipping-status`, { status });
+      setSuccess(`訂單狀態已更新為：${status === 'completed' ? '已出貨' : '待出貨'}`);
+      // 重新載入出貨訂單和週出貨概覽
+      await fetchShippingOrders();
+      if (showWeeklyOverview) {
+        await fetchWeeklyShippingData();
+      }
+    } catch (err) {
+      setError('更新出貨狀態失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 週出貨概覽相關函數
+  const fetchWeeklyShippingData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      console.log('正在查詢週出貨概覽，開始日期:', shippingDate);
+      const response = await axios.get(`${config.apiUrl}/api/orders/shipping-weekly/${shippingDate}`);
+      console.log('週出貨概覽查詢結果:', response.data);
+      setWeeklyShippingData(response.data.weekly_data || []);
+      setSuccess(`已載入週出貨概覽數據`);
+    } catch (err) {
+      console.error('載入週出貨概覽錯誤:', err);
+      setError('載入週出貨概覽失敗: ' + (err.response?.data?.error || err.message));
+      setWeeklyShippingData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [shippingDate]);
+
+  // 當切換到出貨管理頁面時，載入出貨訂單和週概覽
+  useEffect(() => {
+    if (activeTab === 'shipping-management') {
+      fetchShippingOrders();
+      fetchWeeklyShippingData();
+    }
+  }, [activeTab, shippingDate, fetchShippingOrders, fetchWeeklyShippingData]);
+
+  // 當切換到新增訂單頁面時，重新載入客戶列表和產品列表
   useEffect(() => {
     if (activeTab === 'new-order') {
       fetchCustomers();
+      fetchProducts();
     }
   }, [activeTab]);
 
@@ -694,13 +768,13 @@ const AdminPanel = () => {
             </div>
           ))}
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-            <button
-              type="button"
-              className="add-item-button"
-              onClick={addOrderItem}
-            >
-              + 新增產品
-            </button>
+          <button
+            type="button"
+            className="add-item-button"
+            onClick={addOrderItem}
+          >
+            + 新增產品
+          </button>
             <button
               type="button"
               onClick={addGiftItem}
@@ -1379,7 +1453,7 @@ const AdminPanel = () => {
           找到 {filteredHistoryCustomers.length} 位客戶
         </div>
       </div>
-
+      
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
         <div className="form-group">
           <label className="form-label">選擇客戶</label>
@@ -1732,10 +1806,306 @@ const AdminPanel = () => {
     </div>
   );
 
+  const renderShippingManagement = () => (
+    <div className="card">
+      <h2>{user?.role === 'kitchen' ? '🚚 廚房出貨訂單' : '🚚 出貨管理'}</h2>
+      <p style={{ color: '#666', marginBottom: '20px' }}>
+        💡 選擇配送日期來查看當天需要出貨的訂單。只有製作完成的訂單才能標記為已出貨。
+      </p>
+      
+      {/* 日期選擇和視圖切換 */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowWeeklyOverview(false)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: showWeeklyOverview ? '#95a5a6' : '#3498db',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            📅 單日出貨
+          </button>
+          <button
+            onClick={() => setShowWeeklyOverview(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: showWeeklyOverview ? '#3498db' : '#95a5a6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            📊 週出貨概覽
+          </button>
+        </div>
+        
+        {!showWeeklyOverview && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+              選擇配送日期：
+            </label>
+            <input
+              type="date"
+              value={shippingDate}
+              onChange={(e) => setShippingDate(e.target.value)}
+              style={{
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                width: '200px'
+              }}
+            />
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              選擇日期後會自動載入該日期的出貨訂單
+            </div>
+          </div>
+        )}
+        
+        {showWeeklyOverview && (
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+              選擇週開始日期：
+            </label>
+            <input
+              type="date"
+              value={shippingDate}
+              onChange={(e) => setShippingDate(e.target.value)}
+              style={{
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                width: '200px'
+              }}
+            />
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              選擇日期後會自動載入該週的出貨概覽
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 週出貨概覽 */}
+      {showWeeklyOverview && (
+        <div style={{ marginBottom: '20px' }}>
+          <h3>📊 未來一週出貨概覽</h3>
+          {weeklyShippingData.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
+              {weeklyShippingData.map((dayData, index) => {
+                const date = new Date(dayData.date);
+                const isToday = dayData.date === new Date().toISOString().split('T')[0];
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                
+                return (
+                  <div
+                    key={dayData.date}
+                    style={{
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      padding: '15px',
+                      backgroundColor: isToday ? '#e8f5e8' : isWeekend ? '#f8f9fa' : '#fff',
+                      borderLeft: isToday ? '4px solid #27ae60' : isWeekend ? '4px solid #95a5a6' : '4px solid #3498db'
+                    }}
+                  >
+                    <div style={{ fontWeight: 'bold', marginBottom: '10px', color: isToday ? '#27ae60' : '#333' }}>
+                      {date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', weekday: 'short' })}
+                      {isToday && ' (今天)'}
+                    </div>
+                    
+                    <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
+                      <div>📦 訂單數: <strong>{dayData.order_count}</strong></div>
+                      <div>📋 項目數: <strong>{dayData.item_count}</strong></div>
+                      <div>🔢 總數量: <strong>{dayData.total_quantity}</strong></div>
+                      {user?.role === 'admin' && (
+                        <div>💰 總金額: <strong>${dayData.total_amount}</strong></div>
+                      )}
+                      <div style={{ marginTop: '8px', padding: '4px 8px', borderRadius: '4px', backgroundColor: '#e74c3c', color: 'white', fontSize: '12px' }}>
+                        待出貨: {dayData.pending_orders}
+                      </div>
+                      <div style={{ marginTop: '4px', padding: '4px 8px', borderRadius: '4px', backgroundColor: '#27ae60', color: 'white', fontSize: '12px' }}>
+                        已出貨: {dayData.shipped_orders}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+              <p>📊 該週沒有出貨訂單</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 出貨訂單列表 */}
+      {!showWeeklyOverview && shippingOrders.length > 0 ? (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f8f9fa' }}>
+                <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>客戶資訊</th>
+                <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>產品明細</th>
+                {user?.role === 'admin' && (
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>訂單金額</th>
+                )}
+                <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>製作狀態</th>
+                <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>出貨狀態</th>
+                <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shippingOrders.map((order) => {
+                // 檢查製作狀態
+                const isProductionComplete = order.items && order.items.every(item => item.item_status === 'completed');
+                const productionStatus = isProductionComplete ? '製作完成' : '製作中';
+                
+                return (
+                  <tr key={order.id}>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{order.customer_name}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>📞 {order.phone}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>📍 {order.address}</div>
+                      {order.order_notes && (
+                        <div style={{ fontSize: '12px', color: '#e67e22', marginTop: '4px' }}>
+                          📝 {order.order_notes}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {order.items && order.items.length > 0 ? (
+                        <div>
+                          {order.items.map((item, index) => (
+                            <div key={index} style={{ 
+                              marginBottom: '8px', 
+                              padding: '8px', 
+                              backgroundColor: '#f8f9fa', 
+                              borderRadius: '4px',
+                              border: item.is_gift ? '2px solid #f39c12' : '1px solid #dee2e6'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <span style={{ fontWeight: 'bold' }}>
+                                    {item.is_gift && '🎁 '}{item.product_name}
+                                  </span>
+                                  {item.special_notes && (
+                                    <div style={{ fontSize: '11px', color: '#e67e22', marginTop: '2px' }}>
+                                      💬 {item.special_notes}
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                                  <div>數量: {item.quantity}</div>
+                                  {user?.role === 'admin' && (
+                                    <>
+                                      <div>單價: ${item.unit_price}</div>
+                                      <div style={{ fontWeight: 'bold', color: item.is_gift ? '#e67e22' : '#333' }}>
+                                        小計: ${item.item_total}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#999', fontStyle: 'italic' }}>無產品</div>
+                      )}
+                    </td>
+                    {user?.role === 'admin' && (
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'right' }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '16px' }}>${order.customer_total}</div>
+                        {order.shipping_fee !== 0 && (
+                          <div style={{ fontSize: '12px', color: '#666' }}>
+                            運費: ${order.shipping_fee}
+                          </div>
+                        )}
+                      </td>
+                    )}
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                      <span style={{ 
+                        padding: '4px 8px', 
+                        borderRadius: '4px', 
+                        background: isProductionComplete ? '#27ae60' : '#f39c12',
+                        color: 'white',
+                        fontSize: '12px'
+                      }}>
+                        {productionStatus}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                      <span style={{ 
+                        padding: '4px 8px', 
+                        borderRadius: '4px', 
+                        background: order.status === 'shipped' ? '#27ae60' : '#e74c3c',
+                        color: 'white',
+                        fontSize: '12px'
+                      }}>
+                        {order.status === 'shipped' ? '已出貨' : '待出貨'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                      {order.status === 'shipped' ? (
+                        <button
+                          onClick={() => handleUpdateShippingStatus(order.id, 'pending')}
+                          style={{
+                            backgroundColor: '#e74c3c',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '6px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          📦 標記待出貨
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleUpdateShippingStatus(order.id, 'completed')}
+                          disabled={!isProductionComplete}
+                          style={{
+                            backgroundColor: isProductionComplete ? '#27ae60' : '#95a5a6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '6px 12px',
+                            cursor: isProductionComplete ? 'pointer' : 'not-allowed',
+                            fontSize: '12px'
+                          }}
+                        >
+                          🚚 標記已出貨
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+          <p>📦 該配送日期沒有訂單需要出貨</p>
+        </div>
+      )}
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div className="card">
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          {user?.role === 'admin' && (
+            <>
           <button 
             className={`nav-button ${activeTab === 'new-order' ? 'active' : ''}`}
             onClick={() => setActiveTab('new-order')}
@@ -1775,6 +2145,21 @@ const AdminPanel = () => {
           >
             📋 訂單歷史
           </button>
+            </>
+          )}
+          <button 
+            className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}
+            onClick={() => setActiveTab('shipping-management')}
+            style={{ 
+              backgroundColor: activeTab === 'shipping-management' ? '#e67e22' : '#f39c12', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            {user?.role === 'kitchen' ? '🚚 廚房出貨訂單' : '🚚 出貨管理'}
+          </button>
           {editingOrder && (
             <button 
               className={`nav-button ${activeTab === 'edit-order' ? 'active' : ''}`}
@@ -1797,6 +2182,7 @@ const AdminPanel = () => {
       {activeTab === 'customers' && renderCustomerManagement()}
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
+      {activeTab === 'shipping-management' && renderShippingManagement()}
       {activeTab === 'edit-order' && renderEditOrderForm()}
     </div>
   );
