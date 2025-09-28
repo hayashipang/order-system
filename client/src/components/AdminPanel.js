@@ -59,6 +59,16 @@ const AdminPanel = ({ user }) => {
   const [customerSourceFilter, setCustomerSourceFilter] = useState('');
   const [filteredCustomers, setFilteredCustomers] = useState([]);
 
+  // 庫存管理狀態
+  const [inventoryData, setInventoryData] = useState([]);
+  const [inventoryTransactions, setInventoryTransactions] = useState([]);
+  const [inventoryForm, setInventoryForm] = useState({
+    product_id: '',
+    transaction_type: 'in',
+    quantity: '',
+    notes: ''
+  });
+
   // 編輯客戶狀態
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [editCustomerForm, setEditCustomerForm] = useState({
@@ -87,6 +97,8 @@ const AdminPanel = ({ user }) => {
     fetchCustomers();
     fetchProducts();
     fetchShippingFee();
+    fetchInventoryData();
+    fetchInventoryTransactions();
   }, []);
 
   const fetchShippingFee = async () => {
@@ -266,6 +278,116 @@ const AdminPanel = ({ user }) => {
     } catch (err) {
       setError('載入產品列表失敗: ' + err.message);
       setProducts([]);
+    }
+  };
+
+  // 庫存管理相關函數
+  const fetchInventoryData = async () => {
+    try {
+      const response = await axios.get(`${config.apiUrl}/api/inventory`);
+      setInventoryData(response.data);
+    } catch (err) {
+      setError('載入庫存資料失敗: ' + err.message);
+      setInventoryData([]);
+    }
+  };
+
+  const fetchInventoryTransactions = async () => {
+    try {
+      const response = await axios.get(`${config.apiUrl}/api/inventory/transactions`);
+      setInventoryTransactions(response.data);
+    } catch (err) {
+      setError('載入庫存異動記錄失敗: ' + err.message);
+      setInventoryTransactions([]);
+    }
+  };
+
+  const handleInventoryTransaction = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      if (!inventoryForm.product_id || !inventoryForm.quantity) {
+        throw new Error('請選擇產品並輸入數量');
+      }
+
+      const quantity = parseInt(inventoryForm.quantity);
+      if (quantity <= 0) {
+        throw new Error('數量必須大於 0');
+      }
+
+      const transactionData = {
+        ...inventoryForm,
+        quantity: quantity,
+        created_by: 'admin' // 管理員操作
+      };
+
+      await axios.post(`${config.apiUrl}/api/inventory/transaction`, transactionData);
+      setSuccess('庫存異動記錄成功！');
+      
+      // 重置表單
+      setInventoryForm({
+        product_id: '',
+        transaction_type: 'in',
+        quantity: '',
+        notes: ''
+      });
+      
+      // 重新載入資料
+      await fetchInventoryData();
+      await fetchInventoryTransactions();
+    } catch (err) {
+      setError('庫存異動失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 刪除庫存異動記錄
+  const handleDeleteInventoryTransaction = async (transactionId) => {
+    if (!window.confirm('確定要刪除這筆庫存異動記錄嗎？此操作會反向調整庫存數量。')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      await axios.delete(`${config.apiUrl}/api/inventory/transaction/${transactionId}`);
+      setSuccess('庫存異動記錄已刪除！');
+      
+      // 重新載入資料
+      await fetchInventoryData();
+      await fetchInventoryTransactions();
+    } catch (err) {
+      setError('刪除庫存異動記錄失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 重置所有庫存異動記錄
+  const handleResetInventoryTransactions = async () => {
+    if (!window.confirm('確定要重置所有庫存異動記錄嗎？此操作會清空所有異動記錄，但不會改變當前的庫存數量。')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      await axios.delete(`${config.apiUrl}/api/inventory/transactions/reset`);
+      setSuccess('所有庫存異動記錄已重置！');
+      
+      // 重新載入資料
+      await fetchInventoryData();
+      await fetchInventoryTransactions();
+    } catch (err) {
+      setError('重置庫存異動記錄失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -732,26 +854,47 @@ const AdminPanel = ({ user }) => {
 
         <div className="form-group">
           <label className="form-label">訂單項目</label>
+          
+          {/* 表頭 */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 80px 100px 1fr 120px 80px',
+            gap: '10px',
+            marginBottom: '10px',
+            padding: '10px',
+            background: '#e9ecef',
+            borderRadius: '8px',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            color: '#495057'
+          }}>
+            <div>產品</div>
+            <div style={{ textAlign: 'center' }}>數量</div>
+            <div style={{ textAlign: 'center' }}>單價</div>
+            <div>特殊要求</div>
+            <div style={{ textAlign: 'center' }}>小計</div>
+            <div style={{ textAlign: 'center' }}>操作</div>
+          </div>
+
           {newOrder.items.map((item, index) => (
             <div key={index} className="item-row" style={{
-              backgroundColor: item.is_gift ? '#fff3cd' : 'transparent',
-              border: item.is_gift ? '2px solid #ffc107' : 'none',
-              borderRadius: item.is_gift ? '8px' : '0',
-              padding: item.is_gift ? '10px' : '0',
-              marginBottom: item.is_gift ? '10px' : '0'
+              backgroundColor: item.is_gift ? '#fff3cd' : '#f8f9fa',
+              border: item.is_gift ? '2px solid #ffc107' : '1px solid #e9ecef'
             }}>
               {item.is_gift && (
                 <div style={{
+                  gridColumn: '1 / -1',
                   color: '#856404',
                   fontWeight: 'bold',
                   marginBottom: '10px',
-                  fontSize: '14px'
+                  fontSize: '14px',
+                  textAlign: 'center'
                 }}>
                   🎁 贈送項目
                 </div>
               )}
               <select
-                className="form-input"
+                className="form-select"
                 value={item.product_name}
                 onChange={(e) => {
                   const selectedProduct = products.find(p => p.name === e.target.value);
@@ -795,24 +938,13 @@ const AdminPanel = ({ user }) => {
                 value={item.special_notes}
                 onChange={(e) => updateOrderItem(index, 'special_notes', e.target.value)}
               />
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                padding: '8px 12px',
-                background: '#f8f9fa',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: 'bold',
-                color: '#e74c3c',
-                minWidth: '100px',
-                justifyContent: 'center'
-              }}>
+              <div className="subtotal-display">
                 小計: NT$ {(item.quantity * item.unit_price).toLocaleString()}
               </div>
               {newOrder.items.length > 1 && (
                 <button
                   type="button"
-                  className="remove-item-button"
+                  className="remove-button"
                   onClick={() => removeOrderItem(index)}
                 >
                   移除
@@ -2385,6 +2517,283 @@ const AdminPanel = ({ user }) => {
     </div>
   );
 
+  const renderInventoryManagement = () => (
+    <div className="card">
+      <h2>📦 庫存管理</h2>
+      <p style={{ color: '#666', marginBottom: '20px' }}>
+        💡 管理產品庫存，記錄進貨和出貨操作。系統會自動記錄操作時間。
+      </p>
+      
+      {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
+
+      {/* 庫存異動操作表單 */}
+      <div className="card" style={{ marginBottom: '20px', background: '#f8f9fa' }}>
+        <h3>庫存異動操作</h3>
+        <form onSubmit={handleInventoryTransaction}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '2fr 1fr 120px 1fr 150px', 
+            gap: '15px', 
+            marginBottom: '15px',
+            alignItems: 'end'
+          }}>
+            <div className="form-group">
+              <label className="form-label">選擇產品</label>
+              <select
+                className="form-select"
+                value={inventoryForm.product_id}
+                onChange={(e) => setInventoryForm({ ...inventoryForm, product_id: e.target.value })}
+                required
+                style={{ width: '100%' }}
+              >
+                <option value="">請選擇產品</option>
+                {products.map(product => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">異動類型</label>
+              <select
+                className="form-select"
+                value={inventoryForm.transaction_type}
+                onChange={(e) => setInventoryForm({ ...inventoryForm, transaction_type: e.target.value })}
+                required
+                style={{ width: '100%' }}
+              >
+                <option value="in">📥 進貨</option>
+                <option value="out">📤 出貨</option>
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">數量</label>
+              <input
+                type="number"
+                className="form-input"
+                value={inventoryForm.quantity}
+                onChange={(e) => setInventoryForm({ ...inventoryForm, quantity: e.target.value })}
+                placeholder="請輸入數量"
+                min="1"
+                required
+                style={{ width: '100%' }}
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">備註</label>
+              <input
+                type="text"
+                className="form-input"
+                value={inventoryForm.notes}
+                onChange={(e) => setInventoryForm({ ...inventoryForm, notes: e.target.value })}
+                placeholder="可選備註"
+                style={{ width: '100%' }}
+              />
+            </div>
+            
+            <div className="form-group">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  backgroundColor: '#27ae60',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.6 : 1,
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                {loading ? '處理中...' : '確認異動'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      {/* 庫存狀態表格 */}
+      <div style={{ marginBottom: '20px' }}>
+        <h3>庫存狀態</h3>
+        {loading ? (
+          <div className="loading">載入中...</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              background: 'white',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  <th style={{ padding: '15px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>產品名稱</th>
+                  <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>目前庫存</th>
+                  <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>最低庫存</th>
+                  <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>庫存狀態</th>
+                  <th style={{ padding: '15px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>最後更新</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventoryData.map((product) => {
+                  const isLowStock = product.current_stock <= product.min_stock;
+                  return (
+                    <tr key={product.id} style={{ borderBottom: '1px solid #dee2e6' }}>
+                      <td style={{ padding: '15px', fontWeight: '500' }}>{product.name}</td>
+                      <td style={{ 
+                        padding: '15px', 
+                        textAlign: 'center', 
+                        fontWeight: 'bold',
+                        color: isLowStock ? '#e74c3c' : '#27ae60'
+                      }}>
+                        {product.current_stock}
+                      </td>
+                      <td style={{ padding: '15px', textAlign: 'center' }}>{product.min_stock}</td>
+                      <td style={{ padding: '15px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          backgroundColor: isLowStock ? '#e74c3c' : '#27ae60',
+                          color: 'white'
+                        }}>
+                          {isLowStock ? '⚠️ 庫存不足' : '✅ 庫存正常'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '15px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
+                        {new Date(product.updated_at).toLocaleString('zh-TW')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 庫存異動記錄 */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3>庫存異動記錄</h3>
+          <button
+            type="button"
+            onClick={handleResetInventoryTransactions}
+            style={{
+              backgroundColor: '#e74c3c',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            disabled={loading}
+          >
+            🗑️ 重置所有記錄
+          </button>
+        </div>
+        {loading ? (
+          <div className="loading">載入中...</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              background: 'white',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>產品名稱</th>
+                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>異動類型</th>
+                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>數量</th>
+                  <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #dee2e6' }}>備註</th>
+                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>操作時間</th>
+                  <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #dee2e6' }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventoryTransactions.map((transaction) => (
+                  <tr key={transaction.id} style={{ borderBottom: '1px solid #dee2e6' }}>
+                    <td style={{ padding: '12px', fontWeight: '500' }}>{transaction.product_name}</td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        backgroundColor: transaction.transaction_type === 'in' ? '#27ae60' : '#e74c3c',
+                        color: 'white'
+                      }}>
+                        {transaction.transaction_type === 'in' ? '📥 進貨' : '📤 出貨'}
+                      </span>
+                    </td>
+                    <td style={{ 
+                      padding: '12px', 
+                      textAlign: 'center', 
+                      fontWeight: 'bold',
+                      color: transaction.transaction_type === 'in' ? '#27ae60' : '#e74c3c'
+                    }}>
+                      {transaction.transaction_type === 'in' ? '+' : '-'}{transaction.quantity}
+                    </td>
+                    <td style={{ padding: '12px', color: '#666' }}>{transaction.notes || '-'}</td>
+                    <td style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
+                      {new Date(transaction.transaction_date).toLocaleString('zh-TW')}
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteInventoryTransaction(transaction.id)}
+                        style={{
+                          backgroundColor: '#e74c3c',
+                          color: 'white',
+                          border: 'none',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                        disabled={loading}
+                        title="刪除此筆記錄"
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {inventoryTransactions.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                尚無庫存異動記錄
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div className="card">
@@ -2433,6 +2842,19 @@ const AdminPanel = ({ user }) => {
             </>
           )}
           <button 
+            className={`nav-button ${activeTab === 'inventory-management' ? 'active' : ''}`}
+            onClick={() => setActiveTab('inventory-management')}
+            style={{ 
+              backgroundColor: activeTab === 'inventory-management' ? '#8e44ad' : '#a569bd', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            📦 庫存管理
+          </button>
+          <button 
             className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}
             onClick={() => setActiveTab('shipping-management')}
             style={{ 
@@ -2467,6 +2889,7 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'customers' && renderCustomerManagement()}
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
+      {activeTab === 'inventory-management' && renderInventoryManagement()}
       {activeTab === 'shipping-management' && renderShippingManagement()}
       {activeTab === 'edit-order' && renderEditOrderForm()}
     </div>

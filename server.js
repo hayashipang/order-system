@@ -228,7 +228,11 @@ app.post('/api/products', (req, res) => {
       id: Math.max(...db.products.map(p => p.id), 0) + 1,
       name,
       price: parseFloat(price),
-      description
+      description,
+      current_stock: 0,
+      min_stock: 10,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
     
     db.products.push(newProduct);
@@ -315,9 +319,184 @@ app.delete('/api/products/:id', (req, res) => {
       return;
     }
     
+    // 檢查是否有庫存異動記錄
+    const hasInventoryTransactions = db.inventory_transactions && 
+      db.inventory_transactions.some(transaction => transaction.product_id === parseInt(id));
+    
+    if (hasInventoryTransactions) {
+      res.status(400).json({ error: '該產品有庫存異動記錄，無法刪除' });
+      return;
+    }
+    
     db.products.splice(productIndex, 1);
     saveData();
     res.json({ message: '產品刪除成功' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 庫存管理相關 API
+// 取得庫存資料
+app.get('/api/inventory', checkDatabaseReady, (req, res) => {
+  try {
+    // 確保 inventory_transactions 存在
+    if (!db.inventory_transactions) {
+      db.inventory_transactions = [];
+    }
+    
+    res.json(db.products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得庫存異動記錄
+app.get('/api/inventory/transactions', checkDatabaseReady, (req, res) => {
+  try {
+    // 確保 inventory_transactions 存在
+    if (!db.inventory_transactions) {
+      db.inventory_transactions = [];
+    }
+    
+    // 按時間倒序排列
+    const sortedTransactions = db.inventory_transactions.sort((a, b) => 
+      new Date(b.created_at) - new Date(a.created_at)
+    );
+    
+    res.json(sortedTransactions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 新增庫存異動記錄
+app.post('/api/inventory/transaction', checkDatabaseReady, (req, res) => {
+  const { product_id, transaction_type, quantity, notes, created_by } = req.body;
+  
+  try {
+    if (!product_id || !transaction_type || !quantity) {
+      return res.status(400).json({ error: '缺少必要參數' });
+    }
+    
+    const product = db.products.find(p => p.id === parseInt(product_id));
+    if (!product) {
+      return res.status(404).json({ error: '產品不存在' });
+    }
+    
+    const quantityNum = parseInt(quantity);
+    if (quantityNum <= 0) {
+      return res.status(400).json({ error: '數量必須大於 0' });
+    }
+    
+    // 確保 inventory_transactions 存在
+    if (!db.inventory_transactions) {
+      db.inventory_transactions = [];
+    }
+    
+    // 計算新的庫存數量
+    let newStock = product.current_stock || 0;
+    if (transaction_type === 'in') {
+      newStock += quantityNum;
+    } else if (transaction_type === 'out') {
+      newStock -= quantityNum;
+      if (newStock < 0) {
+        return res.status(400).json({ error: '庫存不足，無法出貨' });
+      }
+    } else {
+      return res.status(400).json({ error: '無效的異動類型' });
+    }
+    
+    // 更新產品庫存
+    product.current_stock = newStock;
+    product.updated_at = new Date().toISOString();
+    
+    // 新增異動記錄
+    const newTransaction = {
+      id: Math.max(...db.inventory_transactions.map(t => t.id), 0) + 1,
+      product_id: parseInt(product_id),
+      product_name: product.name,
+      transaction_type,
+      quantity: quantityNum,
+      transaction_date: new Date().toISOString(),
+      notes: notes || '',
+      created_by: created_by || 'admin', // 使用傳入的操作人員，預設為 admin
+      created_at: new Date().toISOString()
+    };
+    
+    db.inventory_transactions.push(newTransaction);
+    saveData();
+    
+    res.json({ 
+      message: '庫存異動記錄成功',
+      transaction: newTransaction,
+      updatedProduct: product
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 刪除庫存異動記錄
+app.delete('/api/inventory/transaction/:id', checkDatabaseReady, (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const transactionId = parseInt(id);
+    const transactionIndex = db.inventory_transactions.findIndex(t => t.id === transactionId);
+    
+    if (transactionIndex === -1) {
+      res.status(404).json({ error: '找不到指定的庫存異動記錄' });
+      return;
+    }
+    
+    const transaction = db.inventory_transactions[transactionIndex];
+    const product = db.products.find(p => p.id === transaction.product_id);
+    
+    if (!product) {
+      res.status(404).json({ error: '找不到對應的產品' });
+      return;
+    }
+    
+    // 反向操作：如果是進貨，則減少庫存；如果是出貨，則增加庫存
+    if (transaction.transaction_type === 'in') {
+      product.current_stock -= transaction.quantity;
+    } else if (transaction.transaction_type === 'out') {
+      product.current_stock += transaction.quantity;
+    }
+    
+    // 更新產品的最後更新時間
+    product.updated_at = new Date().toISOString();
+    
+    // 刪除異動記錄
+    db.inventory_transactions.splice(transactionIndex, 1);
+    
+    // 儲存到檔案
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    
+    res.json({ 
+      message: '庫存異動記錄已刪除',
+      deletedTransaction: transaction,
+      updatedProduct: product
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 重置所有庫存異動記錄
+app.delete('/api/inventory/transactions/reset', checkDatabaseReady, (req, res) => {
+  try {
+    // 只清空所有庫存異動記錄，不改變當前庫存數量
+    db.inventory_transactions = [];
+    
+    // 儲存到檔案
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    
+    res.json({ 
+      message: '所有庫存異動記錄已重置',
+      currentProducts: db.products.map(p => ({ id: p.id, name: p.name, current_stock: p.current_stock }))
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

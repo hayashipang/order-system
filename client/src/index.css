@@ -368,14 +368,54 @@ body {
 }
 
 .item-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 80px 100px 1fr 120px 80px;
   gap: 10px;
   align-items: end;
   margin-bottom: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
 }
 
 .item-row .form-input {
-  flex: 1;
+  width: 100%;
+}
+
+.item-row .form-select {
+  width: 100%;
+}
+
+.item-row .subtotal-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e74c3c;
+  min-height: 44px;
+}
+
+.item-row .remove-button {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+  min-height: 44px;
+}
+
+.item-row .remove-button:hover {
+  background: #c0392b;
 }
 
 .item-row .form-input[type="number"] {
