@@ -112,3 +112,7 @@ temp/
 # Local development files
 local/
 dev/
+
+# Local data files (preserve user data during updates)
+data.local.json
+*.local.json

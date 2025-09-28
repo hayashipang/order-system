@@ -47,43 +47,61 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'client/build')));
 }
 
-// JSON 檔案資料庫
-const DATA_FILE = path.join(__dirname, 'data.json');
+// JSON 檔案資料庫 - 資料檔案分離架構
+const TEMPLATE_DATA_FILE = path.join(__dirname, 'data.json');  // 範本資料檔案 (會被 Git 追蹤)
+const LOCAL_DATA_FILE = path.join(__dirname, 'data.local.json'); // 本地資料檔案 (不會被 Git 追蹤)
 let db = {};
 
-// 檔案讀寫函數
+// 檔案讀寫函數 - 支援資料檔案分離
 function loadData() {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
+    // 優先讀取本地資料檔案
+    if (fs.existsSync(LOCAL_DATA_FILE)) {
+      const data = fs.readFileSync(LOCAL_DATA_FILE, 'utf8');
       db = JSON.parse(data);
-      console.log('資料已從 JSON 檔案載入');
-    } else {
-      // 如果檔案不存在，創建預設資料
-      db = {
-        users: [
-          { id: 1, username: 'admin', password: 'admin123', role: 'admin' },
-          { id: 2, username: 'kitchen', password: 'kitchen123', role: 'kitchen' }
-        ],
-        customers: [],
-        products: [
-          { id: 1, name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
-          { id: 2, name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
-          { id: 3, name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
-          { id: 4, name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
-          { id: 5, name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
-          { id: 6, name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
-          { id: 7, name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
-          { id: 8, name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
-        ],
-        orders: [],
-        order_items: []
-      };
-      saveData();
-      console.log('已創建預設資料並儲存到 JSON 檔案');
+      console.log('✅ 資料已從本地檔案 (data.local.json) 載入');
+      return;
     }
+    
+    // 如果本地檔案不存在，檢查範本檔案
+    if (fs.existsSync(TEMPLATE_DATA_FILE)) {
+      const data = fs.readFileSync(TEMPLATE_DATA_FILE, 'utf8');
+      db = JSON.parse(data);
+      
+      // 複製範本資料到本地檔案
+      fs.writeFileSync(LOCAL_DATA_FILE, JSON.stringify(db, null, 2), 'utf8');
+      console.log('✅ 已從範本檔案複製資料到本地檔案 (data.local.json)');
+      return;
+    }
+    
+    // 如果兩個檔案都不存在，創建預設資料
+    console.log('⚠️  未找到資料檔案，創建預設資料...');
+    db = {
+      users: [
+        { id: 1, username: 'admin', password: 'admin123', role: 'admin' },
+        { id: 2, username: 'kitchen', password: 'kitchen123', role: 'kitchen' }
+      ],
+      customers: [],
+      products: [
+        { id: 1, name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素', current_stock: 0 },
+        { id: 2, name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化', current_stock: 0 },
+        { id: 3, name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏', current_stock: 0 },
+        { id: 4, name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力', current_stock: 0 },
+        { id: 5, name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化', current_stock: 0 },
+        { id: 6, name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身', current_stock: 0 },
+        { id: 7, name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目', current_stock: 0 },
+        { id: 8, name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇', current_stock: 0 }
+      ],
+      orders: [],
+      order_items: [],
+      inventory_transactions: [],
+      shippingFee: 0
+    };
+    saveData();
+    console.log('✅ 已創建預設資料並儲存到本地檔案');
+    
   } catch (error) {
-    console.error('載入資料時發生錯誤:', error);
+    console.error('❌ 載入資料時發生錯誤:', error);
     // 使用預設資料
     db = {
       users: [
@@ -92,27 +110,30 @@ function loadData() {
       ],
       customers: [],
       products: [
-        { id: 1, name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素' },
-        { id: 2, name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化' },
-        { id: 3, name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏' },
-        { id: 4, name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力' },
-        { id: 5, name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化' },
-        { id: 6, name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身' },
-        { id: 7, name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目' },
-        { id: 8, name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇' }
+        { id: 1, name: '蔬果73-元氣綠', price: 120.00, description: '綠色蔬果系列，富含維生素', current_stock: 0 },
+        { id: 2, name: '蔬果73-活力紅', price: 120.00, description: '紅色蔬果系列，抗氧化', current_stock: 0 },
+        { id: 3, name: '蔬果73-亮妍莓', price: 130.00, description: '莓果系列，美容養顏', current_stock: 0 },
+        { id: 4, name: '蔬菜73-幸運果', price: 120.00, description: '黃橘色蔬果系列，提升免疫力', current_stock: 0 },
+        { id: 5, name: '蔬菜100-順暢綠', price: 150.00, description: '100% 綠色蔬菜，促進消化', current_stock: 0 },
+        { id: 6, name: '蔬菜100-養生黑', price: 160.00, description: '100% 黑色養生，滋補強身', current_stock: 0 },
+        { id: 7, name: '蔬菜100-養眼晶(有機枸杞)', price: 180.00, description: '100% 有機枸杞，護眼明目', current_stock: 0 },
+        { id: 8, name: '蔬菜100-法國黑巧70', price: 200.00, description: '100% 法國黑巧克力，濃郁香醇', current_stock: 0 }
       ],
       orders: [],
-      order_items: []
+      order_items: [],
+      inventory_transactions: [],
+      shippingFee: 0
     };
   }
 }
 
 function saveData() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), 'utf8');
-    console.log('資料已儲存到 JSON 檔案');
+    // 儲存到本地資料檔案
+    fs.writeFileSync(LOCAL_DATA_FILE, JSON.stringify(db, null, 2), 'utf8');
+    console.log('✅ 資料已儲存到本地檔案 (data.local.json)');
   } catch (error) {
-    console.error('儲存資料時發生錯誤:', error);
+    console.error('❌ 儲存資料時發生錯誤:', error);
   }
 }
 
