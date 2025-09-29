@@ -26,6 +26,10 @@
       "dest": "/server.js"
     },
     {
+      "src": "/pos",
+      "dest": "/pos-system/build/index.html"
+    },
+    {
       "src": "/pos/(.*)",
       "dest": "/pos-system/build/index.html"
     },
