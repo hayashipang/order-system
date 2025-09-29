@@ -43,6 +43,7 @@
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "REACT_APP_API_URL": "https://order-system-production-6ef7.up.railway.app"
   }
 }
