@@ -40,7 +40,11 @@ app.use(cors({
     'http://localhost:3001', // order-system 前端
     'http://localhost:3002', // pos-system 前端
     'http://127.0.0.1:3001',
-    'http://127.0.0.1:3002'
+    'http://127.0.0.1:3002',
+    'https://order-system.vercel.app', // Vercel Order System
+    'https://order-system-greenwins-projects.vercel.app', // Vercel Order System (alternative)
+    'https://pos-system.vercel.app', // Vercel POS System
+    'https://pos-system-greenwins-projects.vercel.app' // Vercel POS System (alternative)
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
