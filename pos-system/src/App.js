@@ -215,15 +215,6 @@ function App() {
       </header>
       
       <main className="container">
-        {/* 調試信息 */}
-        <div style={{padding: '10px', background: '#f0f0f0', margin: '10px 0'}}>
-          <p>調試信息:</p>
-          <p>Loading: {loading ? '是' : '否'}</p>
-          <p>Error: {error || '無'}</p>
-          <p>Products: {products.length} 個產品</p>
-          <p>Current View: {currentView}</p>
-        </div>
-        
         {renderNavigation()}
         
         {/* 錯誤訊息 */}

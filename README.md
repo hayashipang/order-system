@@ -38,7 +38,7 @@
 - Node.js >= 18.0.0
 - npm >= 8.0.0
 
-### 本地開發
+### 地端開發環境設置
 
 1. **克隆專案**
    ```bash
@@ -46,13 +46,17 @@
    cd order-system
    ```
 
-2. **安裝依賴**
+2. **設置地端API配置**
    ```bash
-   npm install
-   cd client && npm install && cd ..
+   npm run setup:local
    ```
 
-3. **啟動開發服務器**
+3. **安裝依賴**
+   ```bash
+   npm run install-all
+   ```
+
+4. **啟動開發服務器**
    ```bash
    # 終端 1: 啟動後端 (port 3000)
    npm run dev:server
@@ -64,10 +68,10 @@
    npm run dev:pos
    ```
 
-4. **訪問應用**
-   - Order System: http://localhost:3001
-   - POS System: http://localhost:3002
-   - 後端 API: http://localhost:3000
+5. **地端網址**
+   - **Order System**: http://localhost:3001
+   - **POS System**: http://localhost:3002
+   - **Backend API**: http://localhost:3000
 
 ### 預設帳號
 - **管理員**: admin / admin123

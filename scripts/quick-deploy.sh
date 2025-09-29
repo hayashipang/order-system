@@ -3,6 +3,11 @@
 # 快速部署腳本（無需備份，適用於小更新）
 echo "⚡ 快速部署開始..."
 
+# 切換到雲端API配置
+echo "🔧 切換到雲端API配置..."
+sed -i '' 's|http://localhost:3000|https://order-system-production-6ef7.up.railway.app|g' pos-system/src/services/api.js
+sed -i '' 's|"proxy": "http://localhost:3000"|"proxy": "https://order-system-production-6ef7.up.railway.app"|g' pos-system/package.json
+
 # 檢查是否有未提交的更改
 if [ -n "$(git status --porcelain)" ]; then
     echo "📋 發現未提交的更改，開始快速部署..."

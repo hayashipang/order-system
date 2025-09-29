@@ -11,8 +11,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 步驟 2：提交並推送程式碼
-echo "📋 步驟 2：提交並推送程式碼"
+# 步驟 2：切換到雲端API配置
+echo "📋 步驟 2：切換到雲端API配置"
+echo "🔧 切換到雲端API配置..."
+sed -i '' 's|http://localhost:3000|https://order-system-production-6ef7.up.railway.app|g' pos-system/src/services/api.js
+sed -i '' 's|"proxy": "http://localhost:3000"|"proxy": "https://order-system-production-6ef7.up.railway.app"|g' pos-system/package.json
+
+# 步驟 3：提交並推送程式碼
+echo "📋 步驟 3：提交並推送程式碼"
 echo "請輸入提交訊息："
 read -r commit_message
 

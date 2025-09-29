@@ -27,7 +27,8 @@
     "deploy:quick": "./scripts/quick-deploy.sh",
     "deploy:full": "./scripts/deploy-with-backup.sh",
     "backup": "./scripts/backup-cloud-data.sh",
-    "restore": "./scripts/restore-cloud-data.sh"
+    "restore": "./scripts/restore-cloud-data.sh",
+    "setup:local": "./scripts/setup-local-dev.sh"
   },
   "keywords": [
     "order-management",
