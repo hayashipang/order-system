@@ -505,7 +505,7 @@ app.delete('/api/inventory/transaction/:id', checkDatabaseReady, (req, res) => {
     db.inventory_transactions.splice(transactionIndex, 1);
     
     // 儲存到檔案
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    saveData();
     
     res.json({ 
       message: '庫存異動記錄已刪除',
@@ -524,7 +524,7 @@ app.delete('/api/inventory/transactions/reset', checkDatabaseReady, (req, res) =
     db.inventory_transactions = [];
     
     // 儲存到檔案
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    saveData();
     
     res.json({ 
       message: '所有庫存異動記錄已重置',
