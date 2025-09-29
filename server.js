@@ -33,6 +33,7 @@ console.log('🌍 環境設定:');
 console.log('  NODE_ENV:', NODE_ENV);
 console.log('  PORT:', PORT);
 console.log('  API_BASE_URL:', process.env.API_BASE_URL || '未設定');
+console.log('🧪 實驗功能：添加了新的日誌記錄功能');
 
 // Middleware
 app.use(cors({
@@ -294,10 +295,10 @@ app.post('/api/products', (req, res) => {
 // 更新產品
 app.put('/api/products/:id', (req, res) => {
   const { id } = req.params;
-  const { name, price, description } = req.body;
+  const { name, price, description, current_stock, min_stock } = req.body;
   
   try {
-    console.log('更新產品請求:', { id, name, price, description });
+    console.log('更新產品請求:', { id, name, price, description, current_stock, min_stock });
     console.log('當前產品列表:', db.products);
     
     const productIndex = db.products.findIndex(p => p.id === parseInt(id));
@@ -317,7 +318,10 @@ app.put('/api/products/:id', (req, res) => {
       ...db.products[productIndex],
       name,
       price: parseFloat(price),
-      description
+      description,
+      ...(current_stock !== undefined && { current_stock: parseInt(current_stock) }),
+      ...(min_stock !== undefined && { min_stock: parseInt(min_stock) }),
+      updated_at: new Date().toISOString()
     };
     
     // 注意：產品名稱更新不會影響歷史訂單項目
