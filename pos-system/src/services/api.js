@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // API 基礎 URL - 指向雲端後端
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://order-system-production-6ef7.up.railway.app';
+const API_BASE_URL = 'https://order-system-production-6ef7.up.railway.app';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
