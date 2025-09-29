@@ -3,8 +3,15 @@
 # 同步本地價格到雲端腳本
 echo "🔄 開始同步價格到雲端..."
 
-# 設定雲端 API 網址（需要您提供實際的雲端網址）
-CLOUD_API_URL="https://your-railway-app.railway.app"  # 請替換為實際網址
+# 設定雲端 API 網址（請替換為您的 Railway 網址）
+CLOUD_API_URL="https://order-system-production-6ef7.up.railway.app"  # Railway API 網址
+
+# 檢查是否已設定正確的網址
+if [ "$CLOUD_API_URL" = "https://your-railway-app.railway.app" ]; then
+    echo "❌ 請先設定正確的 Railway API 網址！"
+    echo "請編輯此腳本，將 CLOUD_API_URL 改為您的實際 Railway 網址"
+    exit 1
+fi
 
 # 價格設定（根據您的需求）
 declare -A PRICES=(
