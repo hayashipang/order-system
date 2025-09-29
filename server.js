@@ -304,26 +304,9 @@ app.put('/api/products/:id', (req, res) => {
       description
     };
     
-    // 如果產品名稱改變了，同時更新相關的訂單項目
-    let updatedItemsCount = 0;
-    console.log('檢查產品名稱是否改變:', { oldName: oldProductName, newName: name, changed: oldProductName !== name });
-    
-    if (oldProductName !== name) {
-      console.log('產品名稱改變，更新相關訂單項目:', { oldName: oldProductName, newName: name });
-      console.log('當前訂單項目數量:', db.order_items.length);
-      
-      // 更新所有包含舊產品名稱的訂單項目
-      db.order_items.forEach((item, index) => {
-        console.log(`檢查訂單項目 ${index}:`, { product_name: item.product_name, matches: item.product_name === oldProductName });
-        if (item.product_name === oldProductName) {
-          console.log('找到匹配的訂單項目，更新中...');
-          item.product_name = name;
-          updatedItemsCount++;
-        }
-      });
-      
-      console.log('已更新訂單項目數量:', updatedItemsCount);
-    }
+    // 注意：產品名稱更新不會影響歷史訂單項目
+    // 歷史訂單應該保持原始記錄，只有新訂單會使用新的產品名稱
+    console.log('產品名稱更新完成，歷史訂單保持不變:', { oldName: oldProductName, newName: name });
     
     console.log('更新後產品:', db.products[productIndex]);
     
