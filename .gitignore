@@ -8,7 +8,7 @@ yarn-error.log*
 
 # Production builds
 client/build/
-pos-system/build/
+# pos-system/build/  # 註解掉，讓 Vercel 可以部署 POS 系統
 build/
 dist/
 
