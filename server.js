@@ -36,16 +36,28 @@ console.log('  API_BASE_URL:', process.env.API_BASE_URL || '未設定');
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:3001', // order-system 前端
-    'http://localhost:3002', // pos-system 前端
-    'http://127.0.0.1:3001',
-    'http://127.0.0.1:3002',
-    'https://order-system.vercel.app', // Vercel Order System
-    'https://order-system-greenwins-projects.vercel.app', // Vercel Order System (alternative)
-    'https://pos-system.vercel.app', // Vercel POS System
-    'https://pos-system-greenwins-projects.vercel.app' // Vercel POS System (alternative)
-  ],
+  origin: function (origin, callback) {
+    // 允許沒有 origin 的請求（如移動應用或 Postman）
+    if (!origin) return callback(null, true);
+    
+    // 允許本地開發
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    
+    // 允許所有 Vercel 域名
+    if (origin.includes('vercel.app')) {
+      return callback(null, true);
+    }
+    
+    // 允許所有 Railway 域名
+    if (origin.includes('railway.app')) {
+      return callback(null, true);
+    }
+    
+    // 其他域名拒絕
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
