@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { orderAPI } from '../services/api';
 
-const SalesHistory = () => {
+const SalesHistory = ({ onReloadProducts }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -39,6 +39,10 @@ const SalesHistory = () => {
       setSuccess('銷售記錄已刪除');
       // 重新載入銷售歷史
       await loadSalesHistory();
+      // 通知父組件重新載入產品列表（更新庫存）
+      if (onReloadProducts) {
+        onReloadProducts();
+      }
       // 3秒後清除成功訊息
       setTimeout(() => {
         setSuccess('');

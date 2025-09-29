@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// API 基礎 URL - 指向雲端後端
-const API_BASE_URL = 'https://order-system-production-6ef7.up.railway.app';
+// API 基礎 URL - 指向地端後端
+const API_BASE_URL = 'http://localhost:3000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -39,6 +39,8 @@ api.interceptors.response.use(
 export const productAPI = {
   // 取得所有產品列表
   getProducts: () => api.get('/api/shared/products'),
+  // 更新產品資訊
+  updateProduct: (productId, productData) => api.put(`/api/products/${productId}`, productData),
 };
 
 // 訂單相關 API

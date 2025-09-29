@@ -22,7 +22,12 @@
     "postinstall": "npm run install-all",
     "railway-build": "npm run install-all && npm run build",
     "test:local": "npm run build && npm start",
-    "clean": "rm -rf client/build && rm -rf pos-system/build && rm -rf node_modules && rm -rf client/node_modules && rm -rf pos-system/node_modules"
+    "clean": "rm -rf client/build && rm -rf pos-system/build && rm -rf node_modules && rm -rf client/node_modules && rm -rf pos-system/node_modules",
+    "deploy": "./scripts/auto-deploy.sh",
+    "deploy:quick": "./scripts/quick-deploy.sh",
+    "deploy:full": "./scripts/deploy-with-backup.sh",
+    "backup": "./scripts/backup-cloud-data.sh",
+    "restore": "./scripts/restore-cloud-data.sh"
   },
   "keywords": [
     "order-management",

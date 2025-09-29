@@ -22,11 +22,17 @@ const ProductGrid = ({ products, selectedProducts, onProductSelect }) => {
           return (
             <div
               key={product.id}
-              className={`product-card ${isSelected ? 'selected' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}
-              onClick={() => !isOutOfStock && onProductSelect(product)}
+              className={`product-card ${isSelected ? 'selected' : ''}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('點擊產品:', product.name, '庫存:', product.current_stock);
+                onProductSelect(product);
+              }}
               style={{
-                opacity: isOutOfStock ? 0.6 : 1,
-                cursor: isOutOfStock ? 'not-allowed' : 'pointer'
+                opacity: isOutOfStock ? 0.8 : 1,
+                cursor: 'pointer',
+                pointerEvents: 'auto'
               }}
             >
               <div className="product-name">{product.name}</div>
@@ -60,11 +66,11 @@ const ProductGrid = ({ products, selectedProducts, onProductSelect }) => {
                 <div style={{
                   marginTop: '0.5rem',
                   fontSize: '0.8rem',
-                  color: '#e53e3e',
+                  color: '#dd6b20',
                   fontWeight: '600',
                   textAlign: 'center'
                 }}>
-                  暫停銷售
+                  庫存不足，仍可銷售
                 </div>
               )}
             </div>

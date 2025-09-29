@@ -29,6 +29,11 @@ function App() {
     }
   };
 
+  // 重新載入產品列表（供SalesHistory使用）
+  const reloadProducts = () => {
+    loadProducts();
+  };
+
   useEffect(() => {
     loadProducts();
   }, []);
@@ -81,6 +86,45 @@ function App() {
     try {
       const response = await orderAPI.createPOSOrder(orderData);
       console.log('交易成功:', response.data);
+      
+      // 更新庫存：每個銷售的商品庫存-1
+      const updatedProducts = products.map(product => {
+        const soldItem = orderData.items.find(item => item.product_name === product.name);
+        if (soldItem) {
+          const newStock = Math.max(0, product.current_stock - soldItem.quantity);
+          return {
+            ...product,
+            current_stock: newStock
+          };
+        }
+        return product;
+      });
+      setProducts(updatedProducts);
+      
+      // 同步庫存更新到後端
+      console.log('開始同步庫存到後端...');
+      for (const product of updatedProducts) {
+        const soldItem = orderData.items.find(item => item.product_name === product.name);
+        if (soldItem) {
+          console.log(`準備更新庫存: ${product.name}, 新庫存: ${product.current_stock}`);
+          try {
+            const updateData = {
+              name: product.name,
+              price: product.price,
+              description: product.description,
+              current_stock: product.current_stock,
+              min_stock: product.min_stock
+            };
+            console.log('發送更新請求:', updateData);
+            const result = await productAPI.updateProduct(product.id, updateData);
+            console.log(`庫存已更新: ${product.name} -> ${product.current_stock}`, result.data);
+          } catch (err) {
+            console.error(`更新庫存失敗: ${product.name}`, err);
+            console.error('錯誤詳情:', err.response?.data || err.message);
+          }
+        }
+      }
+      console.log('庫存同步完成');
       
       // 顯示成功訊息
       setSuccessMessage(`交易完成！訂單編號: ${response.data.id}`);
@@ -196,8 +240,8 @@ function App() {
           </div>
         )}
         
-        {/* 主要內容 */}
-        {currentView === 'pos' ? renderPOSView() : <SalesHistory />}
+            {/* 主要內容 */}
+            {currentView === 'pos' ? renderPOSView() : <SalesHistory onReloadProducts={reloadProducts} />}
       </main>
     </div>
   );
