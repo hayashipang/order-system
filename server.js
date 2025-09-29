@@ -35,7 +35,17 @@ console.log('  PORT:', PORT);
 console.log('  API_BASE_URL:', process.env.API_BASE_URL || '未設定');
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3001', // order-system 前端
+    'http://localhost:3002', // pos-system 前端
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3002'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json());
 
 // 靜態檔案處理
@@ -1125,7 +1135,7 @@ app.delete('/api/customers/:id', (req, res) => {
 
 // 取得訂單歷史
 app.get('/api/orders/history', (req, res) => {
-  const { customer_id, start_date, end_date } = req.query;
+  const { customer_id, start_date, end_date, order_type } = req.query;
   
   try {
     let filteredOrders = db.orders;
@@ -1154,6 +1164,15 @@ app.get('/api/orders/history', (req, res) => {
       filteredOrders = filteredOrders.filter(order => order.order_date <= end_date);
     }
     
+    // 按訂單類型篩選
+    if (order_type) {
+      if (order_type === 'online') {
+        filteredOrders = filteredOrders.filter(order => order.order_type !== 'walk-in');
+      } else if (order_type === 'walk-in') {
+        filteredOrders = filteredOrders.filter(order => order.order_type === 'walk-in');
+      }
+    }
+    
     // 加入客戶資訊和訂單項目，並排序
     const result = filteredOrders
       .map(order => {
@@ -1169,8 +1188,14 @@ app.get('/api/orders/history', (req, res) => {
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
           credit_card_fee: order.credit_card_fee || 0,
-          customer_name: customer ? customer.name : '未知客戶',
+          customer_name: customer ? customer.name : (order.customer_name || '未知客戶'),
           phone: customer ? customer.phone : '',
+          // 現場銷售特有欄位
+          order_type: order.order_type || 'online',
+          subtotal: order.subtotal,
+          customer_payment: order.customer_payment,
+          change: order.change,
+          created_by: order.created_by,
           items: orderItems.map(item => ({
             product_name: item.product_name,
             quantity: item.quantity,
@@ -1662,6 +1687,191 @@ app.get('/api/orders/weekly/:startDate', (req, res) => {
   }
 });
 
+// ==================== 共享 API 端點 (供 POS 系統使用) ====================
+
+// 取得所有產品列表（共享給 POS 系統）
+app.get('/api/shared/products', checkDatabaseReady, (req, res) => {
+  res.json(db.products);
+});
+
+// 取得所有客戶列表（共享給 POS 系統）
+app.get('/api/shared/customers', checkDatabaseReady, (req, res) => {
+  try {
+    const customers = db.customers.sort((a, b) => a.name.localeCompare(b.name));
+    res.json(customers);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 創建現場銷售訂單（POS 系統專用）
+app.post('/api/shared/pos-orders', checkDatabaseReady, (req, res) => {
+  const { items, subtotal, customer_payment, change, payment_method, created_by } = req.body;
+  
+  try {
+    // 創建現場銷售訂單
+    const newOrder = {
+      id: Math.max(...db.orders.map(o => o.id), 0) + 1,
+      customer_id: null, // 現場銷售沒有客戶ID
+      customer_name: '現場客戶',
+      order_date: new Date().toISOString().split('T')[0],
+      delivery_date: new Date().toISOString().split('T')[0],
+      status: 'completed', // 現場銷售直接完成
+      notes: `現場銷售 - 付款方式: ${payment_method}`,
+      shipping_type: 'none',
+      shipping_fee: 0,
+      credit_card_fee: 0,
+      order_type: 'walk-in', // 標記為現場銷售
+      subtotal: subtotal,
+      customer_payment: customer_payment,
+      change: change,
+      created_by: created_by || 'pos-system'
+    };
+    
+    db.orders.push(newOrder);
+    
+    // 新增訂單項目
+    items.forEach(item => {
+      const newItem = {
+        id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
+        order_id: newOrder.id,
+        product_name: item.product_name,
+        quantity: parseInt(item.quantity),
+        unit_price: parseFloat(item.unit_price),
+        special_notes: item.special_notes || '',
+        status: 'completed', // 現場銷售直接完成
+        is_gift: item.is_gift || false
+      };
+      db.order_items.push(newItem);
+    });
+    
+    saveData();
+    res.json({ 
+      id: newOrder.id, 
+      message: '現場銷售記錄成功',
+      order: newOrder
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得歷史訂單（包含網路訂單和現場銷售）
+app.get('/api/shared/orders/history', checkDatabaseReady, (req, res) => {
+  const { start_date, end_date, order_type } = req.query;
+  
+  try {
+    let filteredOrders = db.orders;
+    
+    // 按訂單類型篩選
+    if (order_type) {
+      if (order_type === 'online') {
+        filteredOrders = filteredOrders.filter(order => order.order_type !== 'walk-in');
+      } else if (order_type === 'walk-in') {
+        filteredOrders = filteredOrders.filter(order => order.order_type === 'walk-in');
+      }
+    }
+    
+    // 按日期篩選
+    if (start_date) {
+      filteredOrders = filteredOrders.filter(order => order.order_date >= start_date);
+    }
+    
+    if (end_date) {
+      filteredOrders = filteredOrders.filter(order => order.order_date <= end_date);
+    }
+    
+    // 加入訂單項目資訊
+    const result = filteredOrders
+      .map(order => {
+        const customer = db.customers.find(c => c.id === order.customer_id);
+        const orderItems = db.order_items.filter(item => item.order_id === order.id);
+        
+        return {
+          id: order.id,
+          order_date: order.order_date,
+          delivery_date: order.delivery_date,
+          status: order.status,
+          notes: order.notes,
+          order_type: order.order_type || 'online',
+          customer_name: customer ? customer.name : (order.customer_name || '未知客戶'),
+          phone: customer ? customer.phone : '',
+          items: orderItems.map(item => ({
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            special_notes: item.special_notes,
+            status: item.status,
+            is_gift: item.is_gift || false
+          })),
+          // 現場銷售特有欄位
+          subtotal: order.subtotal,
+          customer_payment: order.customer_payment,
+          change: order.change,
+          created_by: order.created_by
+        };
+      })
+      .sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
+    
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得日報表（包含網路訂單和現場銷售）
+app.get('/api/shared/reports/daily/:date', checkDatabaseReady, (req, res) => {
+  const { date } = req.params;
+  
+  try {
+    // 取得指定日期的所有訂單
+    const dayOrders = db.orders.filter(order => order.order_date === date);
+    const orderIds = dayOrders.map(order => order.id);
+    const dayItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    
+    // 分別統計網路訂單和現場銷售
+    const onlineOrders = dayOrders.filter(order => order.order_type !== 'walk-in');
+    const walkInOrders = dayOrders.filter(order => order.order_type === 'walk-in');
+    
+    // 計算網路訂單金額
+    let onlineTotal = 0;
+    onlineOrders.forEach(order => {
+      const orderItems = dayItems.filter(item => item.order_id === order.id);
+      const orderTotal = orderItems.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+      onlineTotal += orderTotal;
+      
+      // 運費處理
+      if (order.shipping_fee && order.shipping_fee < 0) {
+        onlineTotal += order.shipping_fee;
+      }
+      
+      // 信用卡手續費
+      if (order.credit_card_fee && order.credit_card_fee > 0) {
+        onlineTotal -= order.credit_card_fee;
+      }
+    });
+    
+    // 計算現場銷售金額
+    const walkInTotal = walkInOrders.reduce((sum, order) => sum + (order.subtotal || 0), 0);
+    
+    res.json({
+      date: date,
+      online_orders: {
+        count: onlineOrders.length,
+        total_amount: onlineTotal
+      },
+      walk_in_orders: {
+        count: walkInOrders.length,
+        total_amount: walkInTotal
+      },
+      total_orders: dayOrders.length,
+      total_amount: onlineTotal + walkInTotal
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 根路徑回應
 app.get('/', (req, res) => {
   res.json({ 
@@ -1673,7 +1883,12 @@ app.get('/', (req, res) => {
       'GET /api/kitchen/production/:date - 取得廚房製作清單',
       'GET /api/orders/customers/:date - 取得客戶訂單清單',
       'GET /api/orders/weekly/:startDate - 取得週統計數據',
-      'POST /api/login - 使用者登入'
+      'POST /api/login - 使用者登入',
+      'GET /api/shared/products - 共享產品列表 (POS)',
+      'GET /api/shared/customers - 共享客戶列表 (POS)',
+      'POST /api/shared/pos-orders - 創建現場銷售訂單 (POS)',
+      'GET /api/shared/orders/history - 共享歷史訂單 (POS)',
+      'GET /api/shared/reports/daily/:date - 共享日報表 (POS)'
     ]
   });
 });

@@ -1,12 +1,14 @@
 # Dependencies
 node_modules/
 client/node_modules/
+pos-system/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
 # Production builds
 client/build/
+pos-system/build/
 build/
 dist/
 

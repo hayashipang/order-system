@@ -41,7 +41,8 @@ const AdminPanel = ({ user }) => {
   const [historyFilters, setHistoryFilters] = useState({
     customer_id: '',
     start_date: '',
-    end_date: ''
+    end_date: '',
+    order_type: '' // 新增訂單類型篩選
   });
 
   // 訂單歷史客戶搜尋狀態
@@ -479,6 +480,7 @@ const AdminPanel = ({ user }) => {
       if (historyFilters.customer_id) params.append('customer_id', historyFilters.customer_id);
       if (historyFilters.start_date) params.append('start_date', historyFilters.start_date);
       if (historyFilters.end_date) params.append('end_date', historyFilters.end_date);
+      if (historyFilters.order_type) params.append('order_type', historyFilters.order_type);
       
       const url = `${config.apiUrl}/api/orders/history?${params.toString()}`;
       const response = await axios.get(url);
@@ -1753,7 +1755,7 @@ const AdminPanel = ({ user }) => {
         )}
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
         <div className="form-group">
           <label className="form-label">選擇客戶</label>
           <select
@@ -1767,6 +1769,18 @@ const AdminPanel = ({ user }) => {
                 {customer.name} ({customer.phone})
               </option>
             ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">訂單類型</label>
+          <select
+            className="form-select"
+            value={historyFilters.order_type}
+            onChange={(e) => setHistoryFilters({ ...historyFilters, order_type: e.target.value })}
+          >
+            <option value="">全部訂單</option>
+            <option value="online">網路訂單</option>
+            <option value="walk-in">現場銷售</option>
           </select>
         </div>
         <div className="form-group">
@@ -1804,7 +1818,8 @@ const AdminPanel = ({ user }) => {
           setHistoryFilters({
             customer_id: '',
             start_date: '',
-            end_date: ''
+            end_date: '',
+            order_type: ''
           });
           setHistoryCustomerSearchTerm('');
           setFilteredHistoryCustomers(customers);
@@ -1827,7 +1842,7 @@ const AdminPanel = ({ user }) => {
       </div>
 
       {/* 顯示當前篩選條件 */}
-      {(historyCustomerSearchTerm || historyFilters.customer_id || historyFilters.start_date || historyFilters.end_date) && (
+      {(historyCustomerSearchTerm || historyFilters.customer_id || historyFilters.start_date || historyFilters.end_date || historyFilters.order_type) && (
         <div style={{ 
           backgroundColor: '#f8f9fa', 
           padding: '10px', 
@@ -1854,6 +1869,11 @@ const AdminPanel = ({ user }) => {
           {historyFilters.end_date && (
             <span style={{ marginLeft: '10px', color: '#dc3545' }}>
               結束日期：{historyFilters.end_date}
+            </span>
+          )}
+          {historyFilters.order_type && (
+            <span style={{ marginLeft: '10px', color: '#6f42c1' }}>
+              訂單類型：{historyFilters.order_type === 'online' ? '網路訂單' : '現場銷售'}
             </span>
           )}
         </div>
@@ -1935,7 +1955,10 @@ const AdminPanel = ({ user }) => {
                 </span>
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {item.special_notes || order.notes}
+                          {order.order_type === 'walk-in' 
+                            ? `付款方式: ${order.notes?.includes('cash') ? 'cash' : 'card'}`
+                            : (item.special_notes || order.notes)
+                          }
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
                           {itemIndex === 0 ? (

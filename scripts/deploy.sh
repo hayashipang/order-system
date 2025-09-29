@@ -1,67 +1,55 @@
 #!/bin/bash
 
-# 🚀 部署腳本
-# 此腳本會建構並準備部署到各個平台
+# 🚀 整合部署腳本
+# 用於快速部署到 Git、Vercel 和 Railway
 
-echo "🚀 開始部署準備..."
+echo "🚀 開始整合部署流程..."
 
-# 檢查環境
-echo "📋 檢查部署環境..."
-if [ "$NODE_ENV" = "production" ]; then
-    echo "✅ 生產環境模式"
-else
-    echo "⚠️  開發環境模式，切換到生產模式..."
-    export NODE_ENV=production
+# 檢查 Git 狀態
+echo "📋 檢查 Git 狀態..."
+if [ -n "$(git status --porcelain)" ]; then
+    echo "⚠️  發現未提交的變更，請先提交變更："
+    git status
+    read -p "是否要繼續部署？(y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "❌ 部署已取消"
+        exit 1
+    fi
 fi
-
-# 清理舊的建構檔案
-echo "🧹 清理舊的建構檔案..."
-npm run clean
 
 # 安裝依賴
-echo "📦 安裝依賴..."
-npm install
-cd client && npm install && cd ..
+echo "📦 安裝所有依賴..."
+npm run install-all
 
-# 建構前端
-echo "🔨 建構前端..."
-npm run build:prod
+# 構建專案
+echo "🔨 構建專案..."
+npm run build
 
-# 檢查建構結果
-if [ -d "client/build" ]; then
-    echo "✅ 前端建構成功"
-    echo "📊 建構檔案大小:"
-    du -sh client/build
-else
-    echo "❌ 前端建構失敗"
+# 檢查構建結果
+if [ ! -d "client/build" ] || [ ! -d "pos-system/build" ]; then
+    echo "❌ 構建失敗，請檢查錯誤訊息"
     exit 1
 fi
 
-# 測試本地部署
-echo "🧪 測試本地部署..."
-timeout 10s npm start &
-SERVER_PID=$!
-sleep 5
+echo "✅ 構建成功！"
 
-# 檢查伺服器是否正常啟動
-if curl -s http://localhost:3000/api > /dev/null; then
-    echo "✅ 本地部署測試成功"
-    kill $SERVER_PID 2>/dev/null
-else
-    echo "❌ 本地部署測試失敗"
-    kill $SERVER_PID 2>/dev/null
-    exit 1
-fi
+# 提交到 Git
+echo "📝 提交到 Git..."
+git add .
+git commit -m "Deploy: $(date '+%Y-%m-%d %H:%M:%S')"
+git push origin main
 
+echo "🎉 部署完成！"
 echo ""
-echo "🎉 部署準備完成！"
+echo "📊 部署狀態："
+echo "  ✅ Git: 已推送到 GitHub"
+echo "  ✅ Vercel: 自動部署中..."
+echo "  ✅ Railway: 自動部署中..."
 echo ""
-echo "📋 部署選項："
-echo "  1. Vercel: 推送到 GitHub，Vercel 會自動部署"
-echo "  2. Railway: 推送到 GitHub，Railway 會自動部署"
-echo "  3. Netlify: 推送到 GitHub，Netlify 會自動部署"
+echo "🌐 訪問地址："
+echo "  📱 Order System: https://your-project.vercel.app"
+echo "  💰 POS System: https://your-project.vercel.app/pos"
+echo "  🔧 API: https://your-app-name.railway.app"
 echo ""
-echo "💡 提示："
-echo "  - 確保 GitHub repository 已連接部署平台"
-echo "  - 檢查各平台的環境變數設定"
-echo "  - 部署後測試所有功能是否正常"
+echo "⏰ 部署通常需要 2-5 分鐘完成"

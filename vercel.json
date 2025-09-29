@@ -11,12 +11,23 @@
       "config": {
         "distDir": "build"
       }
+    },
+    {
+      "src": "pos-system/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "/server.js"
+    },
+    {
+      "src": "/pos/(.*)",
+      "dest": "/pos-system/build/index.html"
     },
     {
       "src": "/(.*)",
