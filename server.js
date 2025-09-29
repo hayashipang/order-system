@@ -313,8 +313,7 @@ app.put('/api/products/:id', (req, res) => {
     saveData();
     res.json({ 
       message: '產品更新成功', 
-      product: db.products[productIndex],
-      updatedOrderItems: updatedItemsCount
+      product: db.products[productIndex]
     });
   } catch (error) {
     console.error('更新產品錯誤:', error);
