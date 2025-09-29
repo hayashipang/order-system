@@ -11,13 +11,6 @@
       "config": {
         "distDir": "build"
       }
-    },
-    {
-      "src": "pos-system/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build"
-      }
     }
   ],
   "routes": [
@@ -26,24 +19,11 @@
       "dest": "/server.js"
     },
     {
-      "src": "/pos",
-      "dest": "/pos-system/build/index.html"
-    },
-    {
-      "src": "/pos/static/(.*)",
-      "dest": "/pos-system/build/static/$1"
-    },
-    {
-      "src": "/pos/favicon.ico",
-      "dest": "/pos-system/build/favicon.ico"
-    },
-    {
       "src": "/(.*)",
       "dest": "/client/build/index.html"
     }
   ],
   "env": {
-    "NODE_ENV": "production",
-    "REACT_APP_API_URL": "https://order-system-production-6ef7.up.railway.app"
+    "NODE_ENV": "production"
   }
 }
