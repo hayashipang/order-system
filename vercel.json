@@ -27,7 +27,7 @@
     },
     {
       "src": "/pos/(.*)",
-      "dest": "/pos-system/build/index.html"
+      "dest": "/client/build/index.html"
     },
     {
       "src": "/(.*)",
