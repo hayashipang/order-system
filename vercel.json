@@ -30,8 +30,12 @@
       "dest": "/pos-system/build/index.html"
     },
     {
-      "src": "/pos/(.*)",
-      "dest": "/pos-system/build/index.html"
+      "src": "/pos/static/(.*)",
+      "dest": "/pos-system/build/static/$1"
+    },
+    {
+      "src": "/pos/favicon.ico",
+      "dest": "/pos-system/build/favicon.ico"
     },
     {
       "src": "/(.*)",
