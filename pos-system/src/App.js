@@ -17,11 +17,13 @@ function App() {
     try {
       setLoading(true);
       setError(null);
+      console.log('開始載入產品列表...');
       const response = await productAPI.getProducts();
+      console.log('產品列表載入成功:', response.data);
       setProducts(response.data);
     } catch (err) {
-      setError('載入產品列表失敗，請檢查網路連線');
       console.error('載入產品錯誤:', err);
+      setError(`載入產品列表失敗: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -169,7 +171,23 @@ function App() {
       </header>
       
       <main className="container">
+        {/* 調試信息 */}
+        <div style={{padding: '10px', background: '#f0f0f0', margin: '10px 0'}}>
+          <p>調試信息:</p>
+          <p>Loading: {loading ? '是' : '否'}</p>
+          <p>Error: {error || '無'}</p>
+          <p>Products: {products.length} 個產品</p>
+          <p>Current View: {currentView}</p>
+        </div>
+        
         {renderNavigation()}
+        
+        {/* 錯誤訊息 */}
+        {error && (
+          <div className="error" style={{color: 'red', padding: '10px', background: '#ffe6e6'}}>
+            {error}
+          </div>
+        )}
         
         {/* 成功訊息 */}
         {successMessage && (
