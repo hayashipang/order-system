@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// API 基礎 URL - 地端開發時指向本地後端
-const API_BASE_URL = 'http://localhost:3001';
+// API 基礎 URL - 根據環境自動切換
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://order-system-production-6ef7.up.railway.app'
+  : 'http://localhost:3001';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
