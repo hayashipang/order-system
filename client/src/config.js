@@ -13,7 +13,7 @@ const config = {
     }
     
     // 3. 開發環境使用 localhost
-    return 'http://localhost:3000';
+    return 'http://localhost:3001';
   })(),
   
   // 應用程式設定

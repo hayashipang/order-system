@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
+import InventoryOverview from './InventoryOverview';
 
 const KitchenDashboard = () => {
   const [productionList, setProductionList] = useState([]);
+  const [walkinOrders, setWalkinOrders] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,6 +16,7 @@ const KitchenDashboard = () => {
   const [inventoryData, setInventoryData] = useState([]);
   const [showWeeklyDetailModal, setShowWeeklyDetailModal] = useState(false);
   const [weeklyDetailData, setWeeklyDetailData] = useState([]);
+  const [activeTab, setActiveTab] = useState('preorder'); // 'preorder' | 'walkin'
   
 
   const fetchProductionList = async (date) => {
@@ -41,21 +44,44 @@ const KitchenDashboard = () => {
     }
   };
 
-
-  const handleRefresh = () => {
-    setLastRefresh(new Date());
-    fetchProductionList(selectedDate);
-    fetchInventoryData();
-    if (showWeeklyView) {
-      fetchWeeklyData();
+  const fetchWalkinOrders = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // 使用真正的 API 載入現場訂單
+      const response = await axios.get(`${config.apiUrl}/api/kitchen/walkin-orders`);
+      setWalkinOrders(response.data);
+    } catch (err) {
+      setError('載入現場訂單失敗: ' + err.message);
+      setWalkinOrders([]);
+    } finally {
+      setLoading(false);
     }
   };
 
 
-  useEffect(() => {
+  const handleRefresh = () => {
+    setLastRefresh(new Date());
+    if (activeTab === 'preorder') {
     fetchProductionList(selectedDate);
+    if (showWeeklyView) {
+      fetchWeeklyData();
+    }
+    } else {
+      fetchWalkinOrders();
+    }
     fetchInventoryData();
-  }, [selectedDate]);
+  };
+
+
+  useEffect(() => {
+    if (activeTab === 'preorder') {
+    fetchProductionList(selectedDate);
+    } else {
+      fetchWalkinOrders();
+    }
+    fetchInventoryData();
+  }, [selectedDate, activeTab]);
 
 
   const handleDateChange = (date) => {
@@ -89,6 +115,19 @@ const KitchenDashboard = () => {
 
   const getTotalCompletedQuantity = () => {
     return productionList.reduce((total, item) => total + item.completed_quantity, 0);
+  };
+
+  // 現場訂單統計函數
+  const getWalkinTotalQuantity = () => {
+    return walkinOrders.reduce((total, item) => total + item.total_quantity, 0);
+  };
+
+  const getWalkinPendingQuantity = () => {
+    return walkinOrders.reduce((total, item) => total + item.pending_quantity, 0);
+  };
+
+  const getWalkinCompletedQuantity = () => {
+    return walkinOrders.reduce((total, item) => total + item.completed_quantity, 0);
   };
 
   const isFullyCompleted = (item) => {
@@ -261,9 +300,51 @@ const KitchenDashboard = () => {
           </button>
         </div>
         
+        {/* 標籤切換器 */}
+        <div style={{ 
+          display: 'flex', 
+          marginBottom: '20px',
+          borderBottom: '2px solid #e9ecef'
+        }}>
+          <button
+            onClick={() => setActiveTab('preorder')}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: activeTab === 'preorder' ? '#3498db' : '#f8f9fa',
+              color: activeTab === 'preorder' ? 'white' : '#6c757d',
+              border: 'none',
+              borderBottom: activeTab === 'preorder' ? '3px solid #2980b9' : '3px solid transparent',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              borderRadius: '8px 8px 0 0',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            📦 預訂訂單
+          </button>
+          <button
+            onClick={() => setActiveTab('walkin')}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: activeTab === 'walkin' ? '#e74c3c' : '#f8f9fa',
+              color: activeTab === 'walkin' ? 'white' : '#6c757d',
+              border: 'none',
+              borderBottom: activeTab === 'walkin' ? '3px solid #c0392b' : '3px solid transparent',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              borderRadius: '8px 8px 0 0',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            🏪 現場訂單
+          </button>
+        </div>
         
-        {/* 標籤切換 */}
         
+        {/* 日期選擇器 - 只在預訂訂單標籤中顯示 */}
+        {activeTab === 'preorder' && (
         <div className="date-selector">
           <button 
             className={`date-button ${selectedDate === getDateString(-1) ? 'active' : ''}`}
@@ -306,72 +387,16 @@ const KitchenDashboard = () => {
           >
             一週
           </button>
-        </div>
-
-        {/* 庫存狀態概覽 */}
-        <div style={{
-          marginBottom: '20px',
-          padding: '15px',
-          background: '#f8f9fa',
-          borderRadius: '8px',
-          border: '1px solid #dee2e6'
-        }}>
-          <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50' }}>📦 庫存狀態概覽</h3>
-          {inventoryData.length > 0 ? (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '10px'
-            }}>
-              {inventoryData.map((product) => {
-                const isLowStock = product.current_stock <= product.min_stock;
-                return (
-                  <div
-                    key={product.id}
-                    style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      backgroundColor: isLowStock ? '#fff5f5' : '#f0fff4',
-                      border: `2px solid ${isLowStock ? '#e74c3c' : '#27ae60'}`,
-                      textAlign: 'center'
-                    }}
-                  >
-                    <div style={{ 
-                      fontWeight: 'bold', 
-                      marginBottom: '5px',
-                      color: isLowStock ? '#e74c3c' : '#27ae60'
-                    }}>
-                      {product.name}
-                    </div>
-                    <div style={{ 
-                      fontSize: '18px', 
-                      fontWeight: 'bold',
-                      color: isLowStock ? '#e74c3c' : '#27ae60'
-                    }}>
-                      {product.current_stock}
-                    </div>
-                    <div style={{ 
-                      fontSize: '12px', 
-                      color: '#666',
-                      marginTop: '2px'
-                    }}>
-                      {isLowStock ? '⚠️ 庫存不足' : '✅ 庫存正常'}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
-              載入庫存資料中...
             </div>
           )}
-        </div>
+
+        {/* 庫存狀態概覽 - 共用組件 */}
+        <InventoryOverview inventoryData={inventoryData} />
 
         {error && <div className="error">{error}</div>}
 
         {/* 廚房製作清單內容 */}
-            {showWeeklyView && (
+        {activeTab === 'preorder' && showWeeklyView && (
           <div style={{
             marginBottom: '20px',
             padding: '20px',
@@ -468,7 +493,8 @@ const KitchenDashboard = () => {
           <div className="loading">載入中...</div>
         ) : (
           <>
-            {productionList.length > 0 ? (
+            {/* 預訂訂單內容 */}
+            {activeTab === 'preorder' && productionList.length > 0 && (
               <>
                 <div style={{ marginBottom: '20px', padding: '15px', background: '#e8f4fd', borderRadius: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
@@ -610,9 +636,165 @@ const KitchenDashboard = () => {
                   ))}
                 </div>
               </>
-            ) : (
+            )}
+
+            {/* 現場訂單內容 */}
+            {activeTab === 'walkin' && walkinOrders.length > 0 && (
+              <>
+                <div style={{ marginBottom: '20px', padding: '15px', background: '#ffeaa7', borderRadius: '8px', border: '2px solid #fdcb6e' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                    <div>
+                      <strong style={{ fontSize: '18px', color: '#d63031' }}>🚨 現場訂單總計: {getWalkinTotalQuantity()} 瓶</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
+                      <span style={{ color: '#dc3545', fontWeight: 'bold' }}>
+                        待製作: {getWalkinPendingQuantity()} 瓶
+                      </span>
+                      <span style={{ color: '#28a745', fontWeight: 'bold' }}>
+                        已完成: {getWalkinCompletedQuantity()} 瓶
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '8px', color: '#666', fontSize: '14px' }}>
+                    {new Date().toLocaleDateString('zh-TW', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric',
+                      weekday: 'long'
+                    })} - 即時更新
+                  </div>
+                </div>
+                
+                <div className="production-list">
+                  {walkinOrders.map((item, index) => (
+                    <div 
+                      key={index} 
+                      className="production-item"
+                      style={{
+                        border: isFullyCompleted(item) ? '3px solid #28a745' : '3px solid #e74c3c',
+                        backgroundColor: isFullyCompleted(item) ? '#f8fff9' : '#fff5f5',
+                        boxShadow: isFullyCompleted(item) ? '0 4px 8px rgba(40, 167, 69, 0.2)' : '0 4px 8px rgba(231, 76, 60, 0.2)'
+                      }}
+                    >
+                      <div className="product-info">
+                        <div className="product-name">
+                          {isFullyCompleted(item) && (
+                            <span style={{ color: '#28a745', marginRight: '8px', fontSize: '18px' }}>
+                              ✅
+                            </span>
+                          )}
+                          {!isFullyCompleted(item) && (
+                            <span style={{ color: '#e74c3c', marginRight: '8px', fontSize: '18px' }}>
+                              🚨
+                            </span>
+                          )}
+                          {item.is_gift ? (
+                            <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
+                              🎁 {item.product_name} (贈送)
+                            </span>
+                          ) : (
+                            <span style={{ fontWeight: 'bold', color: '#2c3e50' }}>
+                              {item.product_name}
+                            </span>
+                          )}
+                        </div>
+                        <div className="quantity-display">
+                          <span className="total-quantity">{item.total_quantity} 瓶</span>
+                        </div>
+                      </div>
+                      <div className="status-columns">
+                        <div className="status-column">
+                          <div className="status-label">待製作</div>
+                          <div 
+                            className="status-value"
+                            style={{
+                              backgroundColor: item.pending_quantity > 0 ? '#dc3545' : '#e9ecef',
+                              color: item.pending_quantity > 0 ? 'white' : '#6c757d',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              fontSize: '16px',
+                              fontWeight: 'bold',
+                              textAlign: 'center',
+                              minWidth: '80px',
+                              border: item.pending_quantity > 0 ? '2px solid #c82333' : 'none'
+                            }}
+                          >
+                            {item.pending_quantity}
+                          </div>
+                        </div>
+                        <div className="status-column">
+                          <div className="status-label">已完成</div>
+                          <div 
+                            className="status-value"
+                            style={{
+                              backgroundColor: item.completed_quantity > 0 ? '#28a745' : '#e9ecef',
+                              color: item.completed_quantity > 0 ? 'white' : '#6c757d',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              fontSize: '16px',
+                              fontWeight: 'bold',
+                              textAlign: 'center',
+                              minWidth: '80px',
+                              border: item.completed_quantity > 0 ? '2px solid #1e7e34' : 'none'
+                            }}
+                          >
+                            {item.completed_quantity}
+                          </div>
+                        </div>
+                        <div className="action-column">
+                          {!isFullyCompleted(item) && (
+                            <button
+                              className="complete-button"
+                              onClick={() => handleStatusUpdate(item.product_name, 'completed')}
+                              disabled={updatingStatus[item.product_name]}
+                              style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#e74c3c',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: updatingStatus[item.product_name] ? 'not-allowed' : 'pointer',
+                                opacity: updatingStatus[item.product_name] ? 0.6 : 1,
+                                fontWeight: 'bold',
+                                fontSize: '14px'
+                              }}
+                            >
+                              {updatingStatus[item.product_name] ? '更新中...' : '🚨 立即完成'}
+                            </button>
+                          )}
+                          {isFullyCompleted(item) && (
+                            <button
+                              className="reset-button"
+                              onClick={() => handleStatusUpdate(item.product_name, 'pending')}
+                              disabled={updatingStatus[item.product_name]}
+                              style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#6c757d',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: updatingStatus[item.product_name] ? 'not-allowed' : 'pointer',
+                                opacity: updatingStatus[item.product_name] ? 0.6 : 1,
+                                fontWeight: 'bold',
+                                fontSize: '14px'
+                              }}
+                            >
+                              {updatingStatus[item.product_name] ? '更新中...' : '重新製作'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* 無訂單時的顯示 */}
+            {((activeTab === 'preorder' && productionList.length === 0) || 
+              (activeTab === 'walkin' && walkinOrders.length === 0)) && (
               <div className="loading">
-                當日無製作項目
+                {activeTab === 'preorder' ? '當日無製作項目' : '目前無現場訂單'}
               </div>
             )}
           </>

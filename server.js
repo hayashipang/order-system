@@ -25,7 +25,7 @@ const loadEnvFile = (filePath) => {
 loadEnvFile(path.join(__dirname, 'env.local'));
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // 顯示環境資訊
@@ -544,14 +544,15 @@ app.get('/api/kitchen/production/:date', (req, res) => {
     console.log('所有訂單:', db.orders);
     console.log('所有訂單項目:', db.order_items);
     
-    // 取得指定日期的訂單（支援多種日期格式）
+    // 取得指定日期的訂單（支援多種日期格式），排除現場訂單
     const orders = db.orders.filter(order => {
       const orderDate = new Date(order.order_date).toISOString().split('T')[0];
       const requestDate = new Date(date).toISOString().split('T')[0];
       const directMatch = order.order_date === date;
       const dateMatch = orderDate === requestDate;
-      console.log(`訂單 ${order.id}: order_date=${order.order_date}, 直接匹配=${directMatch}, 日期匹配=${dateMatch}`);
-      return directMatch || dateMatch;
+      const isNotWalkin = order.order_type !== 'walk-in'; // 排除現場訂單
+      console.log(`訂單 ${order.id}: order_date=${order.order_date}, 直接匹配=${directMatch}, 日期匹配=${dateMatch}, 非現場訂單=${isNotWalkin}`);
+      return (directMatch || dateMatch) && isNotWalkin;
     });
     
     console.log('匹配的訂單:', orders);
@@ -1754,6 +1755,60 @@ app.post('/api/shared/pos-orders', checkDatabaseReady, (req, res) => {
       order: newOrder
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得現場訂單製作清單 (按產品統計數量，僅當天)
+app.get('/api/kitchen/walkin-orders', (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    console.log('請求現場訂單製作清單日期:', today);
+    
+    // 取得當天的現場銷售訂單
+    const walkinOrders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+      return orderDate === today && order.order_type === 'walk-in';
+    });
+    
+    console.log('匹配的現場訂單:', walkinOrders);
+    const orderIds = walkinOrders.map(order => order.id);
+    
+    // 取得這些訂單的項目
+    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    console.log('現場訂單項目:', orderItems);
+    
+    // 按產品名稱和單價分組統計
+    const productStats = {};
+    
+    orderItems.forEach(item => {
+      const key = `${item.product_name}_${item.unit_price}`;
+      if (!productStats[key]) {
+        productStats[key] = {
+          product_name: item.product_name,
+          unit_price: item.unit_price,
+          total_quantity: 0,
+          pending_quantity: 0,
+          completed_quantity: 0,
+          is_gift: item.is_gift
+        };
+      }
+      
+      productStats[key].total_quantity += item.quantity;
+      
+      if (item.status === 'pending') {
+        productStats[key].pending_quantity += item.quantity;
+      } else if (item.status === 'completed') {
+        productStats[key].completed_quantity += item.quantity;
+      }
+    });
+    
+    const result = Object.values(productStats);
+    console.log('現場訂單製作清單結果:', result);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('取得現場訂單製作清單失敗:', error);
     res.status(500).json({ error: error.message });
   }
 });

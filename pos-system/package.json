@@ -37,5 +37,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://order-system-production-6ef7.up.railway.app"
+  "proxy": "http://localhost:3001"
 }

@@ -38,6 +38,12 @@
 - Node.js >= 18.0.0
 - npm >= 8.0.0
 
+### ⚠️ 重要配置說明
+
+**地端就對地端，雲端就對雲端，不要混亂！**
+
+詳細配置說明請參考：[CONFIGURATION_GUIDE.md](./CONFIGURATION_GUIDE.md)
+
 ### 地端開發環境設置
 
 1. **克隆專案**
@@ -46,22 +52,29 @@
    cd order-system
    ```
 
-2. **設置地端API配置**
+2. **快速啟動 (推薦)**
+   ```bash
+   ./start-local.sh
+   ```
+   
+   或手動啟動：
+
+3. **檢查地端配置**
    ```bash
    npm run setup:local
    ```
 
-3. **安裝依賴**
+4. **安裝依賴**
    ```bash
    npm run install-all
    ```
 
-4. **啟動開發服務器**
+5. **啟動開發服務器**
    ```bash
-   # 終端 1: 啟動後端 (port 3000)
+   # 終端 1: 啟動後端 (port 3001)
    npm run dev:server
    
-   # 終端 2: 啟動 Order System 前端 (port 3001)
+   # 終端 2: 啟動 Order System 前端 (port 3000)
    npm run dev:client
    
    # 終端 3: 啟動 POS System 前端 (port 3002)
