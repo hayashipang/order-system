@@ -44,6 +44,28 @@
 
 詳細配置說明請參考：[CONFIGURATION_GUIDE.md](./CONFIGURATION_GUIDE.md)
 
+### Git 上傳流程 ⚠️ 重要
+**每次上傳到 Git 前，務必先備份雲端資料！**
+
+```bash
+# 標準 Git 上傳流程（含雲端備份）
+./scripts/git-upload-with-backup.sh
+
+# 或手動流程：
+# 1. 備份雲端資料
+./scripts/backup-cloud-data.sh
+
+# 2. Git 提交和推送
+git add .
+git commit -m "您的提交訊息"
+git push origin main
+```
+
+**⚠️ 重要提醒：**
+- 每次上傳前都會自動備份雲端資料到 `cloud_data_backups/` 目錄
+- 備份包含：產品資料、客戶資料、訂單資料
+- 確保雲端資料不會被覆蓋或遺失
+
 ### 地端開發環境設置
 
 1. **克隆專案**
