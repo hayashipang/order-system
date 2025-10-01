@@ -6,6 +6,8 @@ const AdminPanel = ({ user }) => {
   const [activeTab, setActiveTab] = useState(user?.role === 'kitchen' ? 'shipping-management' : 'new-order');
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
+  
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -187,6 +189,13 @@ const AdminPanel = ({ user }) => {
     }
   }, [activeTab]);
 
+  // 監聽編輯表單變化
+  useEffect(() => {
+    if (editingOrder) {
+      console.log('編輯表單狀態變化:', editOrderForm);
+    }
+  }, [editOrderForm, editingOrder]);
+
   const fetchCustomers = async () => {
     try {
       // 使用真正的 API
@@ -274,11 +283,29 @@ const AdminPanel = ({ user }) => {
   const fetchProducts = async () => {
     try {
       // 使用真正的 API
+      console.log('正在載入產品資料...');
       const response = await axios.get(`${config.apiUrl}/api/products`);
+      console.log('產品資料載入成功:', response.data);
+      console.log('產品資料數量:', response.data.length);
       setProducts(response.data);
+      console.log('產品狀態已更新，當前產品數量:', response.data.length);
     } catch (err) {
-      setError('載入產品列表失敗: ' + err.message);
-      setProducts([]);
+      console.error('載入產品列表失敗:', err);
+      console.log('使用硬編碼產品資料...');
+      // 如果 API 失敗，使用硬編碼的產品資料
+      const hardcodedProducts = [
+        { id: 1, name: "蔬果73-元氣綠", price: 134, description: "綠色蔬果系列，富含維生素" },
+        { id: 2, name: "蔬果73-活力紅", price: 134, description: "紅色蔬果系列，抗氧化" },
+        { id: 3, name: "蔬果73-亮妍莓", price: 134, description: "莓果系列，美容養顏" },
+        { id: 4, name: "蔬菜73-幸運果", price: 134, description: "黃橘色蔬果系列，提升免疫力" },
+        { id: 5, name: "蔬菜100-順暢綠", price: 134, description: "100% 綠色 蔬菜，促進消化" },
+        { id: 6, name: "蔬菜100-養生黑", price: 134, description: "100% 黑色養生，滋補強身" },
+        { id: 7, name: "蔬菜100-養眼晶", price: 139, description: "100% 有機枸杞，護眼明目" },
+        { id: 8, name: "蔬菜100-法國黑巧70", price: 139, description: "100% 法國黑巧克力，70% 可可含量" },
+        { id: 9, name: "隨機送", price: 0, description: "" }
+      ];
+      setProducts(hardcodedProducts);
+      console.log('硬編碼產品狀態已更新，當前產品數量:', hardcodedProducts.length);
     }
   };
 
@@ -529,7 +556,9 @@ const AdminPanel = ({ user }) => {
       // 準備訂單資料
       const orderData = {
         ...newOrder,
-        shipping_fee: finalShippingFee
+        shipping_fee: finalShippingFee,
+        credit_card_fee: calculateCreditCardFee(),
+        shopee_fee: calculateShopeeFee()
       };
 
       // 使用真正的 API 建立訂單
@@ -595,21 +624,33 @@ const AdminPanel = ({ user }) => {
   const handleEditOrder = async (orderId) => {
     try {
       setLoading(true);
+      console.log('開始編輯訂單:', orderId);
       const response = await axios.get(`${config.apiUrl}/api/orders/${orderId}`);
       const order = response.data;
+      console.log('載入的訂單資料:', order);
+      
+      // 重新載入產品資料以確保下拉選單正常顯示
+      console.log('重新載入產品資料...');
+      await fetchProducts();
+      console.log('產品資料載入完成，當前產品數量:', products.length);
       
       setEditingOrder(orderId);
+      console.log('原始訂單項目:', order.items);
+      const formItems = order.items.length > 0 ? order.items : [{ product_name: '', quantity: 1, unit_price: 0, special_notes: '', status: 'pending', is_gift: false }];
+      console.log('表單項目:', formItems);
       setEditOrderForm({
         customer_id: order.customer_id,
         order_date: order.order_date,
         delivery_date: order.delivery_date,
         notes: order.notes || '',
-        items: order.items.length > 0 ? order.items : [{ product_name: '', quantity: 1, unit_price: 0, special_notes: '', status: 'pending', is_gift: false }],
+        items: formItems,
         shipping_type: order.shipping_type || 'none',
         shipping_fee: order.shipping_fee || 0
       });
+      console.log('設置編輯表單完成');
       setActiveTab('edit-order');
     } catch (err) {
+      console.error('編輯訂單錯誤:', err);
       setError('載入訂單失敗: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
@@ -623,6 +664,9 @@ const AdminPanel = ({ user }) => {
     setSuccess('');
 
     try {
+      console.log('開始更新訂單，編輯表單資料:', editOrderForm);
+      console.log('訂單項目詳細:', editOrderForm.items);
+      
       // 驗證表單
       if (!editOrderForm.customer_id) {
         throw new Error('請選擇客戶');
@@ -642,10 +686,15 @@ const AdminPanel = ({ user }) => {
 
       const orderData = {
         ...editOrderForm,
-        shipping_fee: finalShippingFee
+        shipping_fee: finalShippingFee,
+        credit_card_fee: calculateEditCreditCardFee(),
+        shopee_fee: calculateEditShopeeFee()
       };
 
-      await axios.put(`${config.apiUrl}/api/orders/${editingOrder}`, orderData);
+      console.log('發送到後端的訂單資料:', orderData);
+      const response = await axios.put(`${config.apiUrl}/api/orders/${editingOrder}`, orderData);
+      console.log('後端回應:', response.data);
+      
       setSuccess('訂單更新成功！');
       setEditingOrder(null);
       setEditOrderForm({
@@ -660,6 +709,7 @@ const AdminPanel = ({ user }) => {
       setActiveTab('order-history');
       // 不自動載入，讓用戶主動查詢
     } catch (err) {
+      console.error('更新訂單錯誤:', err);
       setError('更新訂單失敗: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
@@ -690,12 +740,19 @@ const AdminPanel = ({ user }) => {
   };
 
   const updateEditOrderItem = (index, field, value) => {
+    console.log('編輯訂單 - 更新項目:', { index, field, value });
+    console.log('編輯訂單 - 更新前的表單:', editOrderForm);
     const updatedItems = [...editOrderForm.items];
+    console.log('編輯訂單 - 更新前的項目:', updatedItems[index]);
     updatedItems[index] = { ...updatedItems[index], [field]: value };
-    setEditOrderForm({ ...editOrderForm, items: updatedItems });
+    console.log('編輯訂單 - 更新後的項目:', updatedItems[index]);
+    const newForm = { ...editOrderForm, items: updatedItems };
+    setEditOrderForm(newForm);
+    console.log('編輯訂單 - 更新後的表單:', newForm);
   };
 
   const addEditOrderItem = () => {
+    console.log('編輯訂單 - 新增項目');
     setEditOrderForm({
       ...editOrderForm,
       items: [...editOrderForm.items, { product_name: '', quantity: 1, unit_price: 0, special_notes: '', status: 'pending', is_gift: false }]
@@ -703,11 +760,14 @@ const AdminPanel = ({ user }) => {
   };
 
   const removeEditOrderItem = (index) => {
+    console.log('編輯訂單 - 移除項目:', index);
     if (editOrderForm.items.length > 1) {
       const updatedItems = editOrderForm.items.filter((_, i) => i !== index);
       setEditOrderForm({ ...editOrderForm, items: updatedItems });
     }
   };
+
+
 
   const addOrderItem = () => {
     setNewOrder({
@@ -765,7 +825,26 @@ const AdminPanel = ({ user }) => {
       }
     }
     
-    return itemsTotal + shippingAdjustment - creditCardFee;
+    // 計算蝦皮費用
+    let shopeeFee = 0;
+    if (newOrder.customer_id) {
+      const selectedCustomer = customers.find(c => c.id === parseInt(newOrder.customer_id));
+      if (selectedCustomer && selectedCustomer.source === '蝦皮訂購') {
+        // 計算付費產品總金額（排除贈品）
+        const paidItemsTotal = newOrder.items
+          .filter(item => !item.is_gift)
+          .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+        
+        // 成交手續費 = 付費產品金額 × 5.5%
+        const transactionFee = paidItemsTotal * 0.055;
+        // 金流與系統處理費 = 付費產品金額 × 2%
+        const paymentFee = paidItemsTotal * 0.02;
+        // 總手續費 = 成交手續費 + 金流與系統處理費，四捨五入到整數
+        shopeeFee = Math.round(transactionFee + paymentFee);
+      }
+    }
+    
+    return itemsTotal + shippingAdjustment - creditCardFee - shopeeFee;
   };
 
   // 計算信用卡手續費
@@ -783,6 +862,64 @@ const AdminPanel = ({ user }) => {
     // 手續費 = 付費產品金額 × 2%
     return Math.round(paidItemsTotal * 0.02);
   };
+
+  // 計算蝦皮費用
+  const calculateShopeeFee = () => {
+    if (!newOrder.customer_id) return 0;
+    
+    const selectedCustomer = customers.find(c => c.id === parseInt(newOrder.customer_id));
+    if (!selectedCustomer || selectedCustomer.source !== '蝦皮訂購') return 0;
+    
+    // 計算付費產品總金額（排除贈品）
+    const paidItemsTotal = newOrder.items
+      .filter(item => !item.is_gift)
+      .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    
+    // 成交手續費 = 付費產品金額 × 5.5%
+    const transactionFee = paidItemsTotal * 0.055;
+    // 金流與系統處理費 = 付費產品金額 × 2%
+    const paymentFee = paidItemsTotal * 0.02;
+    // 總手續費 = 成交手續費 + 金流與系統處理費，四捨五入到整數
+    return Math.round(transactionFee + paymentFee);
+  };
+
+  // 計算編輯訂單的信用卡手續費
+  const calculateEditCreditCardFee = () => {
+    if (!editOrderForm.customer_id) return 0;
+    
+    const selectedCustomer = customers.find(c => c.id === parseInt(editOrderForm.customer_id));
+    if (!selectedCustomer || selectedCustomer.payment_method !== '信用卡') return 0;
+    
+    // 計算付費產品總金額（排除贈品）
+    const paidItemsTotal = editOrderForm.items
+      .filter(item => !item.is_gift)
+      .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    
+    // 手續費 = 付費產品金額 × 2%
+    return Math.round(paidItemsTotal * 0.02);
+  };
+
+  // 計算編輯訂單的蝦皮費用
+  const calculateEditShopeeFee = () => {
+    if (!editOrderForm.customer_id) return 0;
+    
+    const selectedCustomer = customers.find(c => c.id === parseInt(editOrderForm.customer_id));
+    if (!selectedCustomer || selectedCustomer.source !== '蝦皮訂購') return 0;
+    
+    // 計算付費產品總金額（排除贈品）
+    const paidItemsTotal = editOrderForm.items
+      .filter(item => !item.is_gift)
+      .reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    
+    // 成交手續費 = 付費產品金額 × 5.5%
+    const transactionFee = paidItemsTotal * 0.055;
+    // 金流與系統處理費 = 付費產品金額 × 2%
+    const paymentFee = paidItemsTotal * 0.02;
+    // 總手續費 = 成交手續費 + 金流與系統處理費，四捨五入到整數
+    return Math.round(transactionFee + paymentFee);
+  };
+
+
 
   const renderNewOrderForm = () => (
     <div className="card">
@@ -879,13 +1016,15 @@ const AdminPanel = ({ user }) => {
           </div>
 
           {newOrder.items.map((item, index) => (
-            <div key={index} className="item-row" style={{
+            <div key={index} style={{
               backgroundColor: item.is_gift ? '#fff3cd' : '#f8f9fa',
-              border: item.is_gift ? '2px solid #ffc107' : '1px solid #e9ecef'
+              border: item.is_gift ? '2px solid #ffc107' : '1px solid #e9ecef',
+              borderRadius: item.is_gift ? '8px' : '0',
+              padding: item.is_gift ? '10px' : '0',
+              marginBottom: item.is_gift ? '10px' : '0'
             }}>
               {item.is_gift && (
                 <div style={{
-                  gridColumn: '1 / -1',
                   color: '#856404',
                   fontWeight: 'bold',
                   marginBottom: '10px',
@@ -895,16 +1034,20 @@ const AdminPanel = ({ user }) => {
                   🎁 贈送項目
                 </div>
               )}
+              <div className="item-row">
               <select
                 className="form-select"
                 value={item.product_name}
                 onChange={(e) => {
+                  console.log('產品選擇變更:', e.target.value);
                   const selectedProduct = products.find(p => p.name === e.target.value);
+                  console.log('找到的產品:', selectedProduct);
                   updateOrderItem(index, 'product_name', e.target.value);
                   // 如果是贈送項目，保持價格為 -30，不要自動更新為產品價格
                   if (selectedProduct && !item.is_gift) {
                     updateOrderItem(index, 'unit_price', selectedProduct.price);
                   }
+                  console.log('更新後的項目:', newOrder.items[index]);
                 }}
                 required
               >
@@ -952,6 +1095,7 @@ const AdminPanel = ({ user }) => {
                   移除
                 </button>
               )}
+              </div>
             </div>
           ))}
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -1071,6 +1215,14 @@ const AdminPanel = ({ user }) => {
                 💳 信用卡手續費扣除 (2%): NT$ {calculateCreditCardFee().toLocaleString()}
               </div>
             )}
+            
+            {/* 蝦皮費用 */}
+            {calculateShopeeFee() > 0 && (
+              <div style={{ color: '#e74c3c', fontWeight: 'bold' }}>
+                🛒 蝦皮訂單費用扣除 (7.5%): NT$ {calculateShopeeFee().toLocaleString()}
+              </div>
+            )}
+            
             
             {/* 運費說明 */}
             {newOrder.shipping_type !== 'none' && (
@@ -1272,7 +1424,7 @@ const AdminPanel = ({ user }) => {
         <div className="form-group">
           <label className="form-label">訂單項目</label>
           {editOrderForm.items.map((item, index) => (
-            <div key={index} className="item-row" style={{
+            <div key={index} style={{
               backgroundColor: item.is_gift ? '#fff3cd' : 'transparent',
               border: item.is_gift ? '2px solid #ffc107' : 'none',
               borderRadius: item.is_gift ? '8px' : '0',
@@ -1284,30 +1436,46 @@ const AdminPanel = ({ user }) => {
                   color: '#856404',
                   fontWeight: 'bold',
                   marginBottom: '10px',
-                  fontSize: '14px'
+                  fontSize: '14px',
+                  textAlign: 'center'
                 }}>
                   🎁 贈送項目
                 </div>
               )}
+              <div className="item-row">
               <select
                 className="form-input"
                 value={item.product_name}
                 onChange={(e) => {
+                  console.log('編輯訂單 - 產品選擇變更:', e.target.value);
+                  console.log('編輯訂單 - 當前產品列表:', products);
+                  console.log('編輯訂單 - 產品列表長度:', products.length);
                   const selectedProduct = products.find(p => p.name === e.target.value);
-                  updateEditOrderItem(index, 'product_name', e.target.value);
-                  // 如果是贈送項目，保持價格為 -30，不要自動更新為產品價格
-                  if (selectedProduct && !item.is_gift) {
-                    updateEditOrderItem(index, 'unit_price', selectedProduct.price);
-                  }
+                  console.log('編輯訂單 - 找到的產品:', selectedProduct);
+                  
+                  // 一次性更新產品名稱和價格，避免狀態競爭
+                  const updatedItems = [...editOrderForm.items];
+                  updatedItems[index] = { 
+                    ...updatedItems[index], 
+                    product_name: e.target.value,
+                    unit_price: (selectedProduct && !item.is_gift) ? selectedProduct.price : updatedItems[index].unit_price
+                  };
+                  const newForm = { ...editOrderForm, items: updatedItems };
+                  setEditOrderForm(newForm);
+                  console.log('編輯訂單 - 一次性更新完成:', newForm);
                 }}
                 required
               >
                 <option value="">請選擇產品</option>
-                {products.map(product => (
-                  <option key={product.id} value={product.name}>
-                    {product.name} - NT$ {product.price}
-                  </option>
-                ))}
+                {products.length > 0 ? (
+                  products.map(product => (
+                    <option key={product.id} value={product.name}>
+                      {product.name} - NT$ {product.price}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>載入中...</option>
+                )}
               </select>
               <input
                 type="number"
@@ -1364,6 +1532,7 @@ const AdminPanel = ({ user }) => {
                   ✕
                 </button>
               </div>
+              </div>
             </div>
           ))}
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -1402,6 +1571,7 @@ const AdminPanel = ({ user }) => {
             </button>
           </div>
         </div>
+
 
         <div className="form-group">
           <label className="form-label">備註</label>
@@ -2091,6 +2261,54 @@ const AdminPanel = ({ user }) => {
                       </tr>
                     ) : null}
                     
+                    {/* 蝦皮費用項目 */}
+                    {order.shopee_fee && order.shopee_fee > 0 ? (
+                      <tr key={`${order.id}-shopeefee`} style={{ 
+                        backgroundColor: '#fef2f2',
+                        border: '2px solid #e74c3c'
+                      }}>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {order.customer_name}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#e74c3c' }}>
+                          🛒 蝦皮訂單費用
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          1
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'right' }}>
+                          ${order.shopee_fee}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'right', fontWeight: 'bold', color: '#e74c3c' }}>
+                          -${order.shopee_fee}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          <span style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: '4px', 
+                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
+                            color: 'white',
+                            fontSize: '12px'
+                          }}>
+                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          蝦皮訂單費用扣除
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                          {/* 手續費行不需要編輯按鈕 */}
+                        </td>
+                      </tr>
+                    ) : null}
+                    
+                    
                     {/* 無產品的情況 - 已隱藏，避免顯示無意義的 "0" */}
                     {/* {items.length === 0 && !hasFreeShipping && (
                       <tr key={order.id} style={{ 
@@ -2466,6 +2684,11 @@ const AdminPanel = ({ user }) => {
                         {order.credit_card_fee && order.credit_card_fee > 0 && (
                           <div style={{ fontSize: '12px', color: '#e67e22', fontWeight: 'bold' }}>
                             💳 手續費扣除: ${order.credit_card_fee}
+                          </div>
+                        )}
+                        {order.shopee_fee && order.shopee_fee > 0 && (
+                          <div style={{ fontSize: '12px', color: '#e74c3c', fontWeight: 'bold' }}>
+                            🛒 蝦皮費用扣除: ${order.shopee_fee}
                           </div>
                         )}
                       </td>

@@ -463,6 +463,20 @@ const CustomerOrders = () => {
                               💳 手續費扣除: NT$ {order.credit_card_fee.toLocaleString()}
                             </div>
                           )}
+                          
+                          {/* 蝦皮費用顯示 */}
+                          {order.shopee_fee && order.shopee_fee > 0 && (
+                            <div style={{ 
+                              background: '#e74c3c', 
+                              color: 'white', 
+                              padding: '4px 8px', 
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              🛒 蝦皮費用扣除: NT$ {order.shopee_fee.toLocaleString()}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {order.shipping_type === 'free' && (
                               <span 

@@ -28,7 +28,9 @@
     "deploy:full": "./scripts/deploy-with-backup.sh",
     "backup": "./scripts/backup-cloud-data.sh",
     "restore": "./scripts/restore-cloud-data.sh",
-    "setup:local": "./scripts/setup-local-dev.sh"
+    "setup:local": "./scripts/setup-local-dev.sh",
+    "config:local": "./scripts/switch-env.sh local",
+    "config:production": "./scripts/switch-env.sh production"
   },
   "keywords": [
     "order-management",

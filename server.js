@@ -654,6 +654,7 @@ app.get('/api/orders/customers/:date', (req, res) => {
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
           credit_card_fee: order.credit_card_fee || 0,
+          shopee_fee: order.shopee_fee || 0, // 新增蝦皮費用欄位
           items: [],
           customer_total: 0,
           all_items_completed: true
@@ -693,6 +694,12 @@ app.get('/api/orders/customers/:date', (req, res) => {
       if (order.credit_card_fee && order.credit_card_fee > 0) {
         groupedOrders[orderKey].customer_total -= order.credit_card_fee;
         totalDailyAmount -= order.credit_card_fee;
+      }
+      
+      // 扣除蝦皮費用（從我們的收入中扣除）
+      if (order.shopee_fee && order.shopee_fee > 0) {
+        groupedOrders[orderKey].customer_total -= order.shopee_fee;
+        totalDailyAmount -= order.shopee_fee;
       }
       // 客戶付運費給快遞公司，不計入我們的收入
     });
@@ -758,6 +765,7 @@ app.get('/api/orders/delivery/:date', (req, res) => {
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
           credit_card_fee: order.credit_card_fee || 0,
+          shopee_fee: order.shopee_fee || 0, // 新增蝦皮費用欄位
           items: [],
           customer_total: 0,
           all_items_completed: true
@@ -797,6 +805,12 @@ app.get('/api/orders/delivery/:date', (req, res) => {
       if (order.credit_card_fee && order.credit_card_fee > 0) {
         groupedOrders[orderKey].customer_total -= order.credit_card_fee;
         totalDailyAmount -= order.credit_card_fee;
+      }
+      
+      // 扣除蝦皮費用（從我們的收入中扣除）
+      if (order.shopee_fee && order.shopee_fee > 0) {
+        groupedOrders[orderKey].customer_total -= order.shopee_fee;
+        totalDailyAmount -= order.shopee_fee;
       }
     });
     
@@ -1191,6 +1205,7 @@ app.get('/api/orders/history', (req, res) => {
           shipping_type: order.shipping_type || 'none',
           shipping_fee: order.shipping_fee || 0,
           credit_card_fee: order.credit_card_fee || 0,
+          shopee_fee: order.shopee_fee || 0, // 新增蝦皮費用欄位
           customer_name: customer ? customer.name : (order.customer_name || '未知客戶'),
           phone: customer ? customer.phone : '',
           // 現場銷售特有欄位
@@ -1248,7 +1263,7 @@ app.get('/api/orders/:id', (req, res) => {
 
 // 新增訂單
 app.post('/api/orders', (req, res) => {
-  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee } = req.body;
+  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee, credit_card_fee, shopee_fee } = req.body;
   
   try {
     // 取得客戶資料以檢查付款方式
@@ -1279,7 +1294,8 @@ app.post('/api/orders', (req, res) => {
       notes,
       shipping_type: shipping_type || 'none', // 'none', 'paid', 'free'
       shipping_fee: shipping_fee || 0,
-      credit_card_fee: creditCardFee // 新增信用卡手續費欄位
+      credit_card_fee: credit_card_fee || creditCardFee, // 使用前端計算的費用或後端計算的費用
+      shopee_fee: shopee_fee || 0 // 新增蝦皮費用欄位
     };
     
     db.orders.push(newOrder);
@@ -1314,7 +1330,7 @@ app.post('/api/orders', (req, res) => {
 // 更新訂單（完整編輯）
 app.put('/api/orders/:id', (req, res) => {
   const { id } = req.params;
-  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee } = req.body;
+  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee, credit_card_fee, shopee_fee } = req.body;
   
   try {
     const orderIndex = db.orders.findIndex(o => o.id === parseInt(id));
@@ -1351,7 +1367,8 @@ app.put('/api/orders/:id', (req, res) => {
       notes,
       shipping_type: shipping_type || 'none',
       shipping_fee: shipping_fee || 0,
-      credit_card_fee: creditCardFee // 更新信用卡手續費
+      credit_card_fee: credit_card_fee || creditCardFee, // 使用前端計算的費用或後端計算的費用
+      shopee_fee: shopee_fee || 0 // 更新蝦皮費用
     };
     
     // 刪除舊的訂單項目
@@ -1713,12 +1730,14 @@ app.post('/api/shared/pos-orders', checkDatabaseReady, (req, res) => {
   
   try {
     // 創建現場銷售訂單
+    const now = new Date();
     const newOrder = {
       id: Math.max(...db.orders.map(o => o.id), 0) + 1,
       customer_id: null, // 現場銷售沒有客戶ID
       customer_name: '現場客戶',
-      order_date: new Date().toISOString().split('T')[0],
-      delivery_date: new Date().toISOString().split('T')[0],
+      order_date: now.toISOString().split('T')[0], // 日期
+      order_time: now.toISOString(), // 完整時間戳記
+      delivery_date: now.toISOString().split('T')[0],
       status: 'completed', // 現場銷售直接完成
       notes: `現場銷售 - 付款方式: ${payment_method}`,
       shipping_type: 'none',
@@ -1813,6 +1832,52 @@ app.get('/api/kitchen/walkin-orders', (req, res) => {
   }
 });
 
+// 取得現場訂單列表 (按訂單顯示，用於廚房卡片式顯示)
+app.get('/api/kitchen/walkin-orders-list', (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    console.log('請求現場訂單列表日期:', today);
+    
+    // 取得當天的現場銷售訂單，按時間倒序排列
+    const walkinOrders = db.orders
+      .filter(order => {
+        const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+        return orderDate === today && order.order_type === 'walk-in';
+      })
+      .sort((a, b) => {
+        // 按 order_time 倒序排列，如果沒有 order_time 則按 id 倒序
+        if (a.order_time && b.order_time) {
+          return new Date(b.order_time) - new Date(a.order_time);
+        }
+        return b.id - a.id;
+      });
+    
+    console.log('匹配的現場訂單:', walkinOrders);
+    
+    // 為每個訂單添加訂單項目資訊
+    const result = walkinOrders.map(order => {
+      const orderItems = db.order_items.filter(item => item.order_id === order.id);
+      
+      return {
+        id: order.id,
+        order_time: order.order_time,
+        items: orderItems.map(item => ({
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          is_gift: item.is_gift || false
+        }))
+      };
+    });
+    
+    console.log('現場訂單列表結果:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('取得現場訂單列表失敗:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 取得歷史訂單（包含網路訂單和現場銷售）
 app.get('/api/shared/orders/history', checkDatabaseReady, (req, res) => {
   const { start_date, end_date, order_type } = req.query;
@@ -1846,7 +1911,9 @@ app.get('/api/shared/orders/history', checkDatabaseReady, (req, res) => {
         
         return {
           id: order.id,
+          customer_id: order.customer_id, // 新增客戶ID欄位
           order_date: order.order_date,
+          order_time: order.order_time, // 新增時間戳記欄位
           delivery_date: order.delivery_date,
           status: order.status,
           notes: order.notes,

@@ -33,6 +33,16 @@
       "source": "7-11賣貨便訂購",
       "payment_method": "貨到付款",
       "order_number": ""
+    },
+    {
+      "id": 3,
+      "name": "蝦皮測試客戶",
+      "phone": "0912-345-678",
+      "address": "台北市信義區信義路五段7號",
+      "family_mart_address": "",
+      "source": "蝦皮訂購",
+      "payment_method": "貨到付款",
+      "order_number": "SP123456789"
     }
   ],
   "products": [
@@ -193,6 +203,17 @@
       "shipping_type": "none",
       "shipping_fee": 0,
       "credit_card_fee": 0
+    },
+    {
+      "id": 7,
+      "customer_id": 3,
+      "order_date": "2025-09-30",
+      "delivery_date": "2025-10-01",
+      "status": "pending",
+      "notes": "蝦皮訂單測試",
+      "shipping_type": "paid",
+      "shipping_fee": 0,
+      "credit_card_fee": 0
     }
   ],
   "order_items": [
@@ -282,6 +303,26 @@
       "product_name": "蔬菜100-養生黑",
       "quantity": 10,
       "unit_price": 160,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 10,
+      "order_id": 7,
+      "product_name": "蔬果73-元氣綠(前端測試)",
+      "quantity": 2,
+      "unit_price": 120,
+      "special_notes": "",
+      "status": "pending",
+      "is_gift": false
+    },
+    {
+      "id": 11,
+      "order_id": 7,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 150,
       "special_notes": "",
       "status": "pending",
       "is_gift": false

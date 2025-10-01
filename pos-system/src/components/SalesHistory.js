@@ -82,7 +82,8 @@ const SalesHistory = ({ onReloadProducts }) => {
   const formatTime = (dateString) => {
     return new Date(dateString).toLocaleTimeString('zh-TW', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'Asia/Taipei'
     });
   };
 
@@ -283,7 +284,7 @@ const SalesHistory = ({ onReloadProducts }) => {
                       fontSize: '0.9rem', 
                       color: '#718096' 
                     }}>
-                      {formatDate(order.order_date)} {formatTime(order.order_date)}
+                      {formatDate(order.order_date)} {formatTime(order.order_time || order.order_date)}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>

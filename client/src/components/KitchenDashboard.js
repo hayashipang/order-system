@@ -17,6 +17,8 @@ const KitchenDashboard = () => {
   const [showWeeklyDetailModal, setShowWeeklyDetailModal] = useState(false);
   const [weeklyDetailData, setWeeklyDetailData] = useState([]);
   const [activeTab, setActiveTab] = useState('preorder'); // 'preorder' | 'walkin'
+  const [selectedOrders, setSelectedOrders] = useState([]); // 選取的訂單ID陣列
+  const [showStatsModal, setShowStatsModal] = useState(false); // 統計視窗顯示狀態
   
 
   const fetchProductionList = async (date) => {
@@ -48,8 +50,8 @@ const KitchenDashboard = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用真正的 API 載入現場訂單
-      const response = await axios.get(`${config.apiUrl}/api/kitchen/walkin-orders`);
+      // 使用新的 API 載入現場訂單列表
+      const response = await axios.get(`${config.apiUrl}/api/kitchen/walkin-orders-list`);
       setWalkinOrders(response.data);
     } catch (err) {
       setError('載入現場訂單失敗: ' + err.message);
@@ -119,15 +121,56 @@ const KitchenDashboard = () => {
 
   // 現場訂單統計函數
   const getWalkinTotalQuantity = () => {
-    return walkinOrders.reduce((total, item) => total + item.total_quantity, 0);
+    return walkinOrders.reduce((total, order) => {
+      return total + order.items.reduce((itemTotal, item) => itemTotal + item.quantity, 0);
+    }, 0);
   };
 
-  const getWalkinPendingQuantity = () => {
-    return walkinOrders.reduce((total, item) => total + item.pending_quantity, 0);
+  // 多選功能處理函數
+  const toggleOrderSelection = (orderId) => {
+    setSelectedOrders(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId);
+      } else {
+        return [...prev, orderId];
+      }
+    });
   };
 
-  const getWalkinCompletedQuantity = () => {
-    return walkinOrders.reduce((total, item) => total + item.completed_quantity, 0);
+  // 計算選取訂單的產品統計
+  const getSelectedOrdersStats = () => {
+    const selectedOrdersData = walkinOrders.filter(order => selectedOrders.includes(order.id));
+    const productStats = {};
+    
+    selectedOrdersData.forEach(order => {
+      order.items.forEach(item => {
+        if (!productStats[item.product_name]) {
+          productStats[item.product_name] = 0;
+        }
+        productStats[item.product_name] += item.quantity;
+      });
+    });
+    
+    return Object.entries(productStats).map(([productName, quantity]) => {
+      // 查找對應的庫存資料
+      const inventoryItem = inventoryData.find(item => item.name === productName);
+      const currentStock = inventoryItem ? inventoryItem.current_stock : 0;
+      const minStock = inventoryItem ? inventoryItem.min_stock : 0;
+      const isLowStock = currentStock <= minStock;
+      
+      return {
+        product_name: productName,
+        quantity: quantity,
+        current_stock: currentStock,
+        min_stock: minStock,
+        is_low_stock: isLowStock
+      };
+    });
+  };
+
+  // 清除所有選取
+  const clearSelection = () => {
+    setSelectedOrders([]);
   };
 
   const isFullyCompleted = (item) => {
@@ -646,14 +689,6 @@ const KitchenDashboard = () => {
                     <div>
                       <strong style={{ fontSize: '18px', color: '#d63031' }}>🚨 現場訂單總計: {getWalkinTotalQuantity()} 瓶</strong>
                     </div>
-                    <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
-                      <span style={{ color: '#dc3545', fontWeight: 'bold' }}>
-                        待製作: {getWalkinPendingQuantity()} 瓶
-                      </span>
-                      <span style={{ color: '#28a745', fontWeight: 'bold' }}>
-                        已完成: {getWalkinCompletedQuantity()} 瓶
-                      </span>
-                    </div>
                   </div>
                   <div style={{ marginTop: '8px', color: '#666', fontSize: '14px' }}>
                     {new Date().toLocaleDateString('zh-TW', { 
@@ -665,127 +700,124 @@ const KitchenDashboard = () => {
                   </div>
                 </div>
                 
-                <div className="production-list">
-                  {walkinOrders.map((item, index) => (
-                    <div 
-                      key={index} 
-                      className="production-item"
-                      style={{
-                        border: isFullyCompleted(item) ? '3px solid #28a745' : '3px solid #e74c3c',
-                        backgroundColor: isFullyCompleted(item) ? '#f8fff9' : '#fff5f5',
-                        boxShadow: isFullyCompleted(item) ? '0 4px 8px rgba(40, 167, 69, 0.2)' : '0 4px 8px rgba(231, 76, 60, 0.2)'
-                      }}
-                    >
-                      <div className="product-info">
-                        <div className="product-name">
-                          {isFullyCompleted(item) && (
-                            <span style={{ color: '#28a745', marginRight: '8px', fontSize: '18px' }}>
-                              ✅
-                            </span>
-                          )}
-                          {!isFullyCompleted(item) && (
-                            <span style={{ color: '#e74c3c', marginRight: '8px', fontSize: '18px' }}>
-                              🚨
-                            </span>
-                          )}
-                          {item.is_gift ? (
-                            <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
-                              🎁 {item.product_name} (贈送)
-                            </span>
-                          ) : (
-                            <span style={{ fontWeight: 'bold', color: '#2c3e50' }}>
-                              {item.product_name}
-                            </span>
-                          )}
-                        </div>
-                        <div className="quantity-display">
-                          <span className="total-quantity">{item.total_quantity} 瓶</span>
-                        </div>
-                      </div>
-                      <div className="status-columns">
-                        <div className="status-column">
-                          <div className="status-label">待製作</div>
-                          <div 
-                            className="status-value"
-                            style={{
-                              backgroundColor: item.pending_quantity > 0 ? '#dc3545' : '#e9ecef',
-                              color: item.pending_quantity > 0 ? 'white' : '#6c757d',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              fontSize: '16px',
-                              fontWeight: 'bold',
-                              textAlign: 'center',
-                              minWidth: '80px',
-                              border: item.pending_quantity > 0 ? '2px solid #c82333' : 'none'
-                            }}
-                          >
-                            {item.pending_quantity}
-                          </div>
-                        </div>
-                        <div className="status-column">
-                          <div className="status-label">已完成</div>
-                          <div 
-                            className="status-value"
-                            style={{
-                              backgroundColor: item.completed_quantity > 0 ? '#28a745' : '#e9ecef',
-                              color: item.completed_quantity > 0 ? 'white' : '#6c757d',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              fontSize: '16px',
-                              fontWeight: 'bold',
-                              textAlign: 'center',
-                              minWidth: '80px',
-                              border: item.completed_quantity > 0 ? '2px solid #1e7e34' : 'none'
-                            }}
-                          >
-                            {item.completed_quantity}
-                          </div>
-                        </div>
-                        <div className="action-column">
-                          {!isFullyCompleted(item) && (
-                            <button
-                              className="complete-button"
-                              onClick={() => handleStatusUpdate(item.product_name, 'completed')}
-                              disabled={updatingStatus[item.product_name]}
-                              style={{
-                                padding: '10px 20px',
-                                backgroundColor: '#e74c3c',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: updatingStatus[item.product_name] ? 'not-allowed' : 'pointer',
-                                opacity: updatingStatus[item.product_name] ? 0.6 : 1,
-                                fontWeight: 'bold',
-                                fontSize: '14px'
-                              }}
-                            >
-                              {updatingStatus[item.product_name] ? '更新中...' : '🚨 立即完成'}
-                            </button>
-                          )}
-                          {isFullyCompleted(item) && (
-                            <button
-                              className="reset-button"
-                              onClick={() => handleStatusUpdate(item.product_name, 'pending')}
-                              disabled={updatingStatus[item.product_name]}
-                              style={{
-                                padding: '10px 20px',
-                                backgroundColor: '#6c757d',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: updatingStatus[item.product_name] ? 'not-allowed' : 'pointer',
-                                opacity: updatingStatus[item.product_name] ? 0.6 : 1,
-                                fontWeight: 'bold',
-                                fontSize: '14px'
-                              }}
-                            >
-                              {updatingStatus[item.product_name] ? '更新中...' : '重新製作'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                {/* 選取控制按鈕 */}
+                {selectedOrders.length > 0 && (
+                  <div style={{ 
+                    marginBottom: '20px', 
+                    padding: '15px', 
+                    background: '#e3f2fd', 
+                    borderRadius: '8px', 
+                    border: '2px solid #2196f3',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <strong style={{ fontSize: '16px', color: '#1976d2' }}>
+                        已選取 {selectedOrders.length} 張訂單
+                      </strong>
                     </div>
-                  ))}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => setShowStatsModal(true)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        統計選取訂單
+                      </button>
+                      <button
+                        onClick={clearSelection}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        清除選取
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="walkin-orders-grid">
+                  {walkinOrders.map((order) => {
+                    const isSelected = selectedOrders.includes(order.id);
+                    return (
+                      <div 
+                        key={order.id} 
+                        className="walkin-order-card"
+                        style={{
+                          border: isSelected ? '3px solid #4caf50' : '2px solid #e9ecef',
+                          backgroundColor: isSelected ? '#f1f8e9' : '#f8f9fa',
+                          cursor: 'pointer',
+                          position: 'relative'
+                        }}
+                        onClick={() => toggleOrderSelection(order.id)}
+                      >
+                        {/* 選取指示器 */}
+                        {isSelected && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '10px',
+                            right: '10px',
+                            background: '#4caf50',
+                            color: 'white',
+                            borderRadius: '50%',
+                            width: '24px',
+                            height: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}>
+                            ✓
+                          </div>
+                        )}
+                        
+                        <div className="order-header">
+                          <div className="order-number">訂單 #{order.id}</div>
+                          <div className="order-time">
+                            {order.order_time ? 
+                              new Date(order.order_time).toLocaleTimeString('zh-TW', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: 'Asia/Taipei'
+                              }) + ' 下單' : 
+                              '時間未知'
+                            }
+                          </div>
+                        </div>
+                        <div className="order-items">
+                          {order.items.map((item, index) => (
+                            <div key={index} className="order-item">
+                              <div className="item-name">
+                                {item.is_gift ? (
+                                  <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
+                                    🎁 {item.product_name}
+                                  </span>
+                                ) : (
+                                  item.product_name
+                                )}
+                              </div>
+                              <div className="item-quantity">{item.quantity} 瓶</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -939,6 +971,172 @@ const KitchenDashboard = () => {
                 載入詳細數據中...
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 統計視窗模態框 */}
+      {showStatsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '30px',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              paddingBottom: '15px',
+              borderBottom: '2px solid #e9ecef'
+            }}>
+              <h2 style={{ 
+                margin: 0, 
+                color: '#2c3e50',
+                fontSize: '24px',
+                fontWeight: 'bold'
+              }}>
+                選取訂單產品統計
+              </h2>
+              <button
+                onClick={() => setShowStatsModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#7f8c8d',
+                  padding: '5px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{
+                padding: '10px 15px',
+                backgroundColor: '#e3f2fd',
+                borderRadius: '8px',
+                marginBottom: '15px'
+              }}>
+                <strong style={{ color: '#1976d2' }}>
+                  已選取 {selectedOrders.length} 張訂單
+                </strong>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ 
+                margin: '0 0 15px 0', 
+                color: '#2c3e50',
+                fontSize: '18px'
+              }}>
+                產品統計：
+              </h3>
+              {getSelectedOrdersStats().map((stat, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 15px',
+                  marginBottom: '8px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px',
+                  border: '1px solid #e9ecef'
+                }}>
+                  <span style={{
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: '#2c3e50',
+                    flex: 1
+                  }}>
+                    {stat.product_name}
+                  </span>
+                  <span style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: '#3498db',
+                    backgroundColor: '#e3f2fd',
+                    padding: '4px 12px',
+                    borderRadius: '20px',
+                    minWidth: '60px',
+                    textAlign: 'center',
+                    margin: '0 15px'
+                  }}>
+                    {stat.quantity} 瓶
+                  </span>
+                  <span style={{
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: stat.is_low_stock ? '#e74c3c' : '#666',
+                    minWidth: '100px',
+                    textAlign: 'right'
+                  }}>
+                    庫存: {stat.current_stock} 瓶{stat.is_low_stock ? ' ⚠️' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '15px',
+              paddingTop: '20px',
+              borderTop: '2px solid #e9ecef'
+            }}>
+              <button
+                onClick={() => setShowStatsModal(false)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                關閉
+              </button>
+              <button
+                onClick={() => {
+                  setShowStatsModal(false);
+                  clearSelection();
+                }}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#4caf50',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                關閉並清除選取
+              </button>
+            </div>
           </div>
         </div>
       )}
