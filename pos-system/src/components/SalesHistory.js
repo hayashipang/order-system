@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { orderAPI } from '../services/api';
+// 根據環境選擇API配置
+const apiConfig = process.env.NODE_ENV === 'production' 
+  ? require('../services/api.production') 
+  : require('../services/api');
+
+const { orderAPI } = apiConfig;
 
 const SalesHistory = ({ onReloadProducts }) => {
   const [orders, setOrders] = useState([]);

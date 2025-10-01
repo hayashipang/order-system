@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import ProductGrid from './components/ProductGrid';
 import CashierPanel from './components/CashierPanel';
 import SalesHistory from './components/SalesHistory';
-import { productAPI, orderAPI } from './services/api';
+// 根據環境選擇API配置
+const apiConfig = process.env.NODE_ENV === 'production' 
+  ? require('./services/api.production') 
+  : require('./services/api');
+
+const { productAPI, orderAPI } = apiConfig;
 
 function App() {
   const [products, setProducts] = useState([]);
