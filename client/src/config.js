@@ -1,33 +1,12 @@
-// 環境配置
-const config = {
-  // API 基礎 URL - 根據環境自動選擇
-  apiUrl: process.env.NODE_ENV === 'production' 
-    ? 'https://order-system-production-6ef7.up.railway.app'
-    : 'http://localhost:3001',
-  
-  // 應用程式設定
-  app: {
-    name: '果然盈訂單管理系統',
-    version: '1.0.0'
-  },
-  
-  // 環境資訊
-  environment: {
-    isDevelopment: true,
-    isProduction: false,
-    nodeEnv: 'development'
-  },
-  
-  // 是否使用本地存儲（當沒有後端時）
-  useLocalStorage: false,
-  
-  // 除錯模式
-  debug: true
-};
+// 環境配置 - 自動選擇地端或雲端配置
+import localConfig from './config.local.js';
+import cloudConfig from './config.cloud.js';
 
-// 開發模式下顯示配置資訊
-if (config.debug) {
-  console.log('🔧 應用程式配置:', config);
-}
+// 根據環境變數選擇配置
+// 雲端部署時 NODE_ENV 為 production，地端開發時為 development
+const config = process.env.NODE_ENV === 'production' ? cloudConfig : localConfig;
+
+// 顯示當前使用的配置
+console.log('🔧 當前配置:', config);
 
 export default config;
