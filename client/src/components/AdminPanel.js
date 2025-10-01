@@ -529,6 +529,7 @@ const AdminPanel = ({ user }) => {
     if (activeTab === 'order-history') {
       fetchOrderHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const handleAddOrder = async (e) => {
