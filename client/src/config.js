@@ -1,7 +1,9 @@
 // 環境配置
 const config = {
-  // API 基礎 URL - 地端開發環境
-  apiUrl: 'http://localhost:3001',
+  // API 基礎 URL - 根據環境自動選擇
+  apiUrl: process.env.NODE_ENV === 'production' 
+    ? 'https://order-system-production-6ef7.up.railway.app'
+    : 'http://localhost:3001',
   
   // 應用程式設定
   app: {
