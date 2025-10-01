@@ -510,7 +510,10 @@ const AdminPanel = ({ user }) => {
       if (historyFilters.order_type) params.append('order_type', historyFilters.order_type);
       
       const url = `${config.apiUrl}/api/orders/history?${params.toString()}`;
+      console.log('載入訂單歷史 URL:', url);
       const response = await axios.get(url);
+      console.log('訂單歷史 API 回應:', response.data);
+      console.log('訂單歷史數量:', response.data.length);
       setOrderHistory(response.data);
     } catch (err) {
       console.error('載入訂單歷史錯誤:', err);
@@ -521,12 +524,12 @@ const AdminPanel = ({ user }) => {
     }
   };
 
-  // 移除自動載入，讓用戶主動查詢
-  // useEffect(() => {
-  //   if (activeTab === 'order-history') {
-  //     fetchOrderHistory();
-  //   }
-  // }, [activeTab]);
+  // 自動載入訂單歷史
+  useEffect(() => {
+    if (activeTab === 'order-history') {
+      fetchOrderHistory();
+    }
+  }, [activeTab]);
 
   const handleAddOrder = async (e) => {
     e.preventDefault();
@@ -619,6 +622,7 @@ const AdminPanel = ({ user }) => {
       setLoading(false);
     }
   };
+
 
   // 編輯訂單相關函數
   const handleEditOrder = async (orderId) => {
@@ -1603,26 +1607,966 @@ const AdminPanel = ({ user }) => {
     </div>
   );
 
+  // 分離下載功能狀態
+  const [downloadOptions, setDownloadOptions] = useState({
+    customers: true,
+    products: true,
+    orders: true,
+    posOrders: false
+  });
+
+  // 分離上傳功能狀態
+  const [uploadOptions, setUploadOptions] = useState({
+    customers: false,
+    products: false,
+    orders: false,
+    posOrders: false
+  });
+
+  // ID映射表，用於處理上傳時的ID變更
+  const [idMappings, setIdMappings] = useState({
+    customers: new Map(),
+    products: new Map()
+  });
+
+  // 分離下載函數
+  const handleSeparateDownload = async (dataType) => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      let apiUrl, fileName, dataKey;
+      
+      switch (dataType) {
+        case 'customers':
+          apiUrl = `${config.apiUrl}/api/customers`;
+          fileName = `customers_${new Date().toISOString().split('T')[0]}.json`;
+          dataKey = 'customers';
+          break;
+        case 'products':
+          apiUrl = `${config.apiUrl}/api/products`;
+          fileName = `products_${new Date().toISOString().split('T')[0]}.json`;
+          dataKey = 'products';
+          break;
+        case 'orders':
+          apiUrl = `${config.apiUrl}/api/orders/history`;
+          fileName = `orders_${new Date().toISOString().split('T')[0]}.json`;
+          dataKey = 'orders';
+          break;
+        case 'posOrders':
+          apiUrl = `${config.apiUrl}/api/orders/history`;
+          fileName = `pos_orders_${new Date().toISOString().split('T')[0]}.json`;
+          dataKey = 'posOrders';
+          break;
+        default:
+          throw new Error('無效的資料類型');
+      }
+
+      console.log(`下載 ${dataType} 資料...`);
+      const response = await axios.get(apiUrl);
+      let data = response.data;
+      
+      // 如果是POS訂單，過濾出POS相關的訂單
+      if (dataType === 'posOrders') {
+        data = data.filter(order => 
+          order.source === '現場訂購' || 
+          order.created_by === 'pos-system' ||
+          order.order_type === 'walk-in'
+        );
+        console.log(`過濾出 ${data.length} 筆POS訂單`);
+      }
+      
+      console.log(`下載的 ${dataType} 資料:`, {
+        count: data.length,
+        sample: data[0]
+      });
+
+      const backupData = {
+        backup_date: new Date().toISOString(),
+        data_type: dataType,
+        [dataKey]: data
+      };
+
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      setSuccess(`${dataType} 資料下載成功！`);
+    } catch (err) {
+      setError(`下載 ${dataType} 資料失敗: ` + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 批量下載函數
+  const handleBatchDownload = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const downloads = [];
+      
+      if (downloadOptions.customers) {
+        downloads.push({ type: 'customers', url: `${config.apiUrl}/api/customers` });
+      }
+      if (downloadOptions.products) {
+        downloads.push({ type: 'products', url: `${config.apiUrl}/api/products` });
+      }
+      if (downloadOptions.orders) {
+        downloads.push({ type: 'orders', url: `${config.apiUrl}/api/orders/history` });
+      }
+      if (downloadOptions.posOrders) {
+        downloads.push({ type: 'posOrders', url: `${config.apiUrl}/api/orders/history` });
+      }
+
+      if (downloads.length === 0) {
+        setError('請至少選擇一種資料類型');
+        return;
+      }
+
+      console.log('批量下載資料...', downloads);
+      
+      // 並行下載所有選中的資料
+      const responses = await Promise.all(
+        downloads.map(download => axios.get(download.url))
+      );
+
+      // 創建包含所有資料的備份檔案
+      const backupData = {
+        backup_date: new Date().toISOString(),
+        download_types: downloads.map(d => d.type)
+      };
+
+      downloads.forEach((download, index) => {
+        let data = responses[index].data;
+        
+        // 如果是POS訂單，過濾出POS相關的訂單
+        if (download.type === 'posOrders') {
+          data = data.filter(order => 
+            order.source === '現場訂購' || 
+            order.created_by === 'pos-system' ||
+            order.order_type === 'walk-in'
+          );
+          console.log(`過濾出 ${data.length} 筆POS訂單`);
+        }
+        
+        backupData[download.type] = data;
+      });
+
+      console.log('批量下載完成:', {
+        types: downloads.map(d => d.type),
+        counts: downloads.map((d, i) => ({ [d.type]: responses[i].data.length }))
+      });
+
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      setSuccess(`批量下載成功！包含: ${downloads.map(d => d.type).join(', ')}`);
+    } catch (err) {
+      setError('批量下載失敗: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 分離上傳函數
+  const handleSeparateUpload = (dataType) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      try {
+        setLoading(true);
+        setError('');
+        
+        const text = await file.text();
+        const backupData = JSON.parse(text);
+        
+        console.log(`上傳 ${dataType} 資料...`, backupData);
+        
+        // 驗證檔案格式
+        console.log('檔案內容結構:', Object.keys(backupData));
+        
+        let data;
+        if (backupData[dataType]) {
+          // 新格式：{ customers: [...], products: [...], orders: [...], posOrders: [...] }
+          data = backupData[dataType];
+        } else if (Array.isArray(backupData)) {
+          // 舊格式：直接是陣列
+          data = backupData;
+        } else {
+          throw new Error(`無效的 ${dataType} 檔案格式。期望包含 ${dataType} 欄位或直接為陣列格式`);
+        }
+        
+        if (!Array.isArray(data)) {
+          throw new Error(`${dataType} 資料格式錯誤，期望陣列格式`);
+        }
+        
+        console.log(`準備上傳 ${dataType} 資料:`, {
+          count: data.length,
+          sample: data[0]
+        });
+        
+        // 清空現有資料
+        console.log(`清空現有 ${dataType} 資料...`);
+        if (dataType === 'customers') {
+          const existingCustomers = await axios.get(`${config.apiUrl}/api/customers`);
+          for (const customer of existingCustomers.data) {
+            await axios.delete(`${config.apiUrl}/api/customers/${customer.id}`);
+          }
+        } else if (dataType === 'products') {
+          const existingProducts = await axios.get(`${config.apiUrl}/api/products`);
+          for (const product of existingProducts.data) {
+            await axios.delete(`${config.apiUrl}/api/products/${product.id}`);
+          }
+        } else if (dataType === 'orders') {
+          const existingOrders = await axios.get(`${config.apiUrl}/api/orders/history`);
+          for (const order of existingOrders.data) {
+            await axios.delete(`${config.apiUrl}/api/orders/${order.id}`);
+          }
+        } else if (dataType === 'posOrders') {
+          // 只清空POS相關的訂單
+          const existingOrders = await axios.get(`${config.apiUrl}/api/orders/history`);
+          const posOrders = existingOrders.data.filter(order => 
+            order.source === '現場訂購' || 
+            order.created_by === 'pos-system' ||
+            order.order_type === 'walk-in'
+          );
+          for (const order of posOrders) {
+            await axios.delete(`${config.apiUrl}/api/orders/${order.id}`);
+          }
+          console.log(`清空了 ${posOrders.length} 筆POS訂單`);
+        }
+        
+        // 上傳新資料
+        console.log(`上傳新 ${dataType} 資料...`);
+        if (dataType === 'customers') {
+          const newCustomerMappings = new Map();
+          for (const item of data) {
+            const { id: oldId, ...itemData } = item;
+            const response = await axios.post(`${config.apiUrl}/api/customers`, itemData);
+            const newId = response.data.id;
+            newCustomerMappings.set(oldId, newId);
+            console.log(`客戶 ${itemData.name}: 舊ID ${oldId} -> 新ID ${newId}`);
+          }
+          // 更新客戶ID映射表
+          setIdMappings(prev => ({
+            ...prev,
+            customers: new Map([...prev.customers, ...newCustomerMappings])
+          }));
+        } else if (dataType === 'products') {
+          for (const item of data) {
+            const { id, ...itemData } = item;
+            await axios.post(`${config.apiUrl}/api/products`, itemData);
+          }
+        } else if (dataType === 'orders') {
+          // 訂單需要特殊處理，因為可能包含不存在的 customer_id
+          for (const item of data) {
+            const { id, customer_id, ...itemData } = item;
+            
+            console.log(`處理訂單 ${id}: customer_id = ${customer_id}`);
+            console.log('當前客戶ID映射表:', Array.from(idMappings.customers.entries()));
+            
+            // 處理 customer_id，使用ID映射表
+            if (customer_id) {
+              // 首先檢查ID映射表
+              if (idMappings.customers.has(customer_id)) {
+                const newCustomerId = idMappings.customers.get(customer_id);
+                console.log(`使用映射表: 客戶ID ${customer_id} -> ${newCustomerId}`);
+                itemData.customer_id = newCustomerId;
+              } else {
+                console.warn(`映射表中找不到客戶ID ${customer_id}，嘗試直接查詢`);
+                // 如果映射表中沒有，直接檢查客戶是否存在
+                try {
+                  const customerResponse = await axios.get(`${config.apiUrl}/api/customers/${customer_id}`);
+                  console.log(`客戶 ID ${customer_id} 存在:`, customerResponse.data.name);
+                  itemData.customer_id = customer_id;
+                } catch (error) {
+                  console.warn(`客戶 ID ${customer_id} 不存在，嘗試使用第一個可用客戶`);
+                  console.warn('錯誤詳情:', error.response?.data || error.message);
+                  
+                  // 嘗試使用第一個可用的客戶，如果沒有就創建一個預設客戶
+                  try {
+                    const customersResponse = await axios.get(`${config.apiUrl}/api/customers`);
+                    if (customersResponse.data.length > 0) {
+                      const firstCustomer = customersResponse.data[0];
+                      console.log(`使用客戶 ID ${firstCustomer.id} (${firstCustomer.name}) 替代`);
+                      itemData.customer_id = firstCustomer.id;
+                    } else {
+                      console.warn('沒有可用的客戶，創建預設客戶');
+                      // 創建一個預設客戶
+                      const defaultCustomer = {
+                        name: `預設客戶_${Date.now()}`,
+                        phone: '0000000000',
+                        address: '預設地址',
+                        source: '系統自動創建',
+                        payment_method: '貨到付款'
+                      };
+                      const newCustomerResponse = await axios.post(`${config.apiUrl}/api/customers`, defaultCustomer);
+                      const newCustomerId = newCustomerResponse.data.id;
+                      console.log(`創建預設客戶 ID ${newCustomerId}: ${defaultCustomer.name}`);
+                      itemData.customer_id = newCustomerId;
+                    }
+                  } catch (customersError) {
+                    console.error('無法獲取客戶列表:', customersError);
+                    itemData.customer_id = null;
+                  }
+                }
+              }
+            } else {
+              console.log(`訂單 ${id} 沒有 customer_id，嘗試使用第一個可用客戶`);
+              // 如果沒有 customer_id，嘗試使用第一個可用的客戶
+              try {
+                const customersResponse = await axios.get(`${config.apiUrl}/api/customers`);
+                if (customersResponse.data.length > 0) {
+                  const firstCustomer = customersResponse.data[0];
+                  console.log(`使用客戶 ID ${firstCustomer.id} (${firstCustomer.name}) 替代 null customer_id`);
+                  itemData.customer_id = firstCustomer.id;
+                } else {
+                  console.warn('沒有可用的客戶，將 customer_id 設為 null');
+                  itemData.customer_id = null;
+                }
+              } catch (customersError) {
+                console.error('無法獲取客戶列表:', customersError);
+                itemData.customer_id = null;
+              }
+            }
+            
+            console.log(`上傳訂單 ${id} 資料:`, {
+              customer_id: itemData.customer_id,
+              order_date: itemData.order_date,
+              items_count: itemData.items?.length || 0
+            });
+            
+            try {
+              const apiUrl = `${config.apiUrl}/api/orders`;
+              console.log(`發送請求到: ${apiUrl}`);
+              console.log('請求資料:', itemData);
+              
+              const response = await axios.post(apiUrl, itemData, {
+                headers: { 'Content-Type': 'application/json' }
+              });
+              console.log(`訂單 ${id} 上傳成功:`, response.data);
+            } catch (error) {
+              console.error(`訂單 ${id} 上傳失敗:`, error.response?.data || error.message);
+              console.error('錯誤狀態碼:', error.response?.status);
+              console.error('錯誤詳情:', error.response);
+              throw error;
+            }
+          }
+        } else if (dataType === 'posOrders') {
+          // POS訂單上傳，使用與一般訂單相同的邏輯
+          for (const item of data) {
+            const { id, customer_id, ...itemData } = item;
+            
+            console.log(`處理POS訂單 ${id}: customer_id = ${customer_id}`);
+            console.log('當前客戶ID映射表:', Array.from(idMappings.customers.entries()));
+            
+            // 處理 customer_id，使用ID映射表
+            if (customer_id) {
+              // 首先檢查ID映射表
+              if (idMappings.customers.has(customer_id)) {
+                const newCustomerId = idMappings.customers.get(customer_id);
+                console.log(`使用映射表: 客戶ID ${customer_id} -> ${newCustomerId}`);
+                itemData.customer_id = newCustomerId;
+              } else {
+                console.warn(`映射表中找不到客戶ID ${customer_id}，嘗試直接查詢`);
+                // 如果映射表中沒有，直接檢查客戶是否存在
+                try {
+                  const customerResponse = await axios.get(`${config.apiUrl}/api/customers/${customer_id}`);
+                  console.log(`客戶 ID ${customer_id} 存在:`, customerResponse.data.name);
+                  itemData.customer_id = customer_id;
+                } catch (error) {
+                  console.warn(`客戶 ID ${customer_id} 不存在，嘗試使用第一個可用客戶`);
+                  console.warn('錯誤詳情:', error.response?.data || error.message);
+                  
+                  // 嘗試使用第一個可用的客戶，如果沒有就創建一個預設客戶
+                  try {
+                    const customersResponse = await axios.get(`${config.apiUrl}/api/customers`);
+                    if (customersResponse.data.length > 0) {
+                      const firstCustomer = customersResponse.data[0];
+                      console.log(`使用客戶 ID ${firstCustomer.id} (${firstCustomer.name}) 替代`);
+                      itemData.customer_id = firstCustomer.id;
+                    } else {
+                      console.warn('沒有可用的客戶，創建預設客戶');
+                      // 創建一個預設客戶
+                      const defaultCustomer = {
+                        name: `預設客戶_${Date.now()}`,
+                        phone: '0000000000',
+                        address: '預設地址',
+                        source: '系統自動創建',
+                        payment_method: '貨到付款'
+                      };
+                      const newCustomerResponse = await axios.post(`${config.apiUrl}/api/customers`, defaultCustomer);
+                      const newCustomerId = newCustomerResponse.data.id;
+                      console.log(`創建預設客戶 ID ${newCustomerId}: ${defaultCustomer.name}`);
+                      itemData.customer_id = newCustomerId;
+                    }
+                  } catch (customersError) {
+                    console.error('無法獲取客戶列表:', customersError);
+                    itemData.customer_id = null;
+                  }
+                }
+              }
+            } else {
+              console.log(`POS訂單 ${id} 沒有 customer_id，嘗試使用第一個可用客戶`);
+              // 如果沒有 customer_id，嘗試使用第一個可用的客戶
+              try {
+                const customersResponse = await axios.get(`${config.apiUrl}/api/customers`);
+                if (customersResponse.data.length > 0) {
+                  const firstCustomer = customersResponse.data[0];
+                  console.log(`使用客戶 ID ${firstCustomer.id} (${firstCustomer.name}) 替代 null customer_id`);
+                  itemData.customer_id = firstCustomer.id;
+                } else {
+                  console.warn('沒有可用的客戶，將 customer_id 設為 null');
+                  itemData.customer_id = null;
+                }
+              } catch (customersError) {
+                console.error('無法獲取客戶列表:', customersError);
+                itemData.customer_id = null;
+              }
+            }
+            
+            console.log(`上傳POS訂單 ${id} 資料:`, {
+              customer_id: itemData.customer_id,
+              order_date: itemData.order_date,
+              items_count: itemData.items?.length || 0
+            });
+            
+            try {
+              // POS訂單使用專用端點，避免信用卡費用計算
+              const apiUrl = `${config.apiUrl}/api/shared/pos-orders`;
+              console.log(`發送POS訂單請求到: ${apiUrl}`);
+              
+              // 轉換為POS訂單格式
+              const posOrderData = {
+                items: itemData.items || [],
+                subtotal: itemData.subtotal || 0,
+                customer_payment: itemData.customer_payment || 0,
+                change: itemData.change || 0,
+                payment_method: itemData.payment_method || 'cash',
+                created_by: itemData.created_by || 'pos-system'
+              };
+              
+              console.log('POS訂單請求資料:', posOrderData);
+              
+              const response = await axios.post(apiUrl, posOrderData, {
+                headers: { 'Content-Type': 'application/json' }
+              });
+              console.log(`POS訂單 ${id} 上傳成功:`, response.data);
+            } catch (error) {
+              console.error(`POS訂單 ${id} 上傳失敗:`, error.response?.data || error.message);
+              console.error('錯誤狀態碼:', error.response?.status);
+              console.error('錯誤詳情:', error.response);
+              throw error;
+            }
+          }
+        }
+        
+        // 重新載入資料
+        await fetchCustomers();
+        await fetchProducts();
+        await fetchOrderHistory();
+        
+        setSuccess(`${dataType} 資料上傳成功！`);
+      } catch (err) {
+        setError(`上傳 ${dataType} 資料失敗: ` + (err.response?.data?.error || err.message));
+      } finally {
+        setLoading(false);
+      }
+    };
+    input.click();
+  };
+
+  // 批量上傳函數
+  const handleBatchUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      try {
+        setLoading(true);
+        setError('');
+        
+        const text = await file.text();
+        const backupData = JSON.parse(text);
+        
+        console.log('批量上傳資料...', backupData);
+        
+        // 驗證檔案格式
+        console.log('批量上傳檔案內容結構:', Object.keys(backupData));
+        
+        if (!backupData.backup_date && !backupData.customers && !backupData.products && !backupData.orders && !backupData.posOrders) {
+          throw new Error('無效的備份檔案格式。檔案應包含 backup_date 或資料欄位');
+        }
+        
+        const uploadTypes = [];
+        if (backupData.customers && uploadOptions.customers) uploadTypes.push('customers');
+        if (backupData.products && uploadOptions.products) uploadTypes.push('products');
+        if (backupData.orders && uploadOptions.orders) uploadTypes.push('orders');
+        if (backupData.posOrders && uploadOptions.posOrders) uploadTypes.push('posOrders');
+        
+        if (uploadTypes.length === 0) {
+          setError('請至少選擇一種要上傳的資料類型');
+          return;
+        }
+        
+        console.log('準備上傳的資料類型:', uploadTypes);
+        
+        // 處理客戶資料
+        if (uploadTypes.includes('customers')) {
+          console.log('處理客戶資料...');
+          const existingCustomers = await axios.get(`${config.apiUrl}/api/customers`);
+          for (const customer of existingCustomers.data) {
+            await axios.delete(`${config.apiUrl}/api/customers/${customer.id}`);
+          }
+          
+          for (const customer of backupData.customers) {
+            const { id, ...customerData } = customer;
+            await axios.post(`${config.apiUrl}/api/customers`, customerData);
+          }
+        }
+        
+        // 處理產品資料
+        if (uploadTypes.includes('products')) {
+          console.log('處理產品資料...');
+          const existingProducts = await axios.get(`${config.apiUrl}/api/products`);
+          for (const product of existingProducts.data) {
+            await axios.delete(`${config.apiUrl}/api/products/${product.id}`);
+          }
+          
+          for (const product of backupData.products) {
+            const { id, ...productData } = product;
+            await axios.post(`${config.apiUrl}/api/products`, productData);
+          }
+        }
+        
+        // 處理訂單資料
+        if (uploadTypes.includes('orders')) {
+          console.log('處理訂單資料...');
+          const existingOrders = await axios.get(`${config.apiUrl}/api/orders/history`);
+          for (const order of existingOrders.data) {
+            await axios.delete(`${config.apiUrl}/api/orders/${order.id}`);
+          }
+          
+          for (const order of backupData.orders) {
+            const { id, customer_id, ...orderData } = order;
+            
+            // 如果 customer_id 存在，檢查客戶是否存在
+            if (customer_id) {
+              try {
+                await axios.get(`${config.apiUrl}/api/customers/${customer_id}`);
+                orderData.customer_id = customer_id;
+              } catch (error) {
+                console.warn(`客戶 ID ${customer_id} 不存在，將 customer_id 設為 null`);
+                orderData.customer_id = null;
+              }
+            } else {
+              orderData.customer_id = null;
+            }
+            
+            await axios.post(`${config.apiUrl}/api/orders`, orderData, {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        }
+        
+        // 處理POS訂單資料
+        if (uploadTypes.includes('posOrders')) {
+          console.log('處理POS訂單資料...');
+          // 只清空POS相關的訂單
+          const existingOrders = await axios.get(`${config.apiUrl}/api/orders/history`);
+          const posOrders = existingOrders.data.filter(order => 
+            order.source === '現場訂購' || 
+            order.created_by === 'pos-system' ||
+            order.order_type === 'walk-in'
+          );
+          for (const order of posOrders) {
+            await axios.delete(`${config.apiUrl}/api/orders/${order.id}`);
+          }
+          console.log(`清空了 ${posOrders.length} 筆POS訂單`);
+          
+          for (const order of backupData.posOrders) {
+            const { id, customer_id, ...orderData } = order;
+            
+            // POS訂單使用專用端點，避免信用卡費用計算
+            const posOrderData = {
+              items: orderData.items || [],
+              subtotal: orderData.subtotal || 0,
+              customer_payment: orderData.customer_payment || 0,
+              change: orderData.change || 0,
+              payment_method: orderData.payment_method || 'cash',
+              created_by: orderData.created_by || 'pos-system'
+            };
+            
+            await axios.post(`${config.apiUrl}/api/shared/pos-orders`, posOrderData, {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        }
+        
+        // 重新載入資料
+        await fetchCustomers();
+        await fetchProducts();
+        await fetchOrderHistory();
+        
+        setSuccess(`批量上傳成功！包含: ${uploadTypes.join(', ')}`);
+      } catch (err) {
+        setError('批量上傳失敗: ' + (err.response?.data?.error || err.message));
+      } finally {
+        setLoading(false);
+      }
+    };
+    input.click();
+  };
+
   const renderCustomerManagement = () => (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>客戶管理</h2>
-        <button 
-          className="button success"
-          onClick={() => setActiveTab('new-customer')}
-          style={{ 
-            padding: '10px 20px', 
-            fontSize: '16px',
-            backgroundColor: '#e74c3c',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          ➕ 新增客戶
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            className="button success"
+            onClick={() => setActiveTab('new-customer')}
+            style={{ 
+              padding: '10px 20px', 
+              fontSize: '16px',
+              backgroundColor: '#e74c3c',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            ➕ 新增客戶
+          </button>
+        </div>
       </div>
+      
+      {/* 分離下載功能 */}
+      <div style={{ 
+        backgroundColor: '#f8f9fa', 
+        padding: '15px', 
+        borderRadius: '8px', 
+        marginBottom: '20px',
+        border: '1px solid #dee2e6'
+      }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#495057' }}>📥 資料下載</h3>
+        
+        {/* 下載選項 */}
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={downloadOptions.customers}
+              onChange={(e) => setDownloadOptions(prev => ({ ...prev, customers: e.target.checked }))}
+            />
+            <span>👥 客戶資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={downloadOptions.products}
+              onChange={(e) => setDownloadOptions(prev => ({ ...prev, products: e.target.checked }))}
+            />
+            <span>📦 產品資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={downloadOptions.orders}
+              onChange={(e) => setDownloadOptions(prev => ({ ...prev, orders: e.target.checked }))}
+            />
+            <span>📋 訂單資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}>
+            <input
+              type="checkbox"
+              checked={downloadOptions.posOrders}
+              onChange={(e) => setDownloadOptions(prev => ({ ...prev, posOrders: e.target.checked }))}
+            />
+            <span>🛒 POS銷售訂單</span>
+          </label>
+        </div>
+
+        {/* 下載按鈕 */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleBatchDownload}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📥 批量下載
+          </button>
+          
+          <button
+            onClick={() => handleSeparateDownload('customers')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            👥 客戶
+          </button>
+          
+          <button
+            onClick={() => handleSeparateDownload('products')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#ffc107',
+              color: '#212529',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📦 產品
+          </button>
+          
+          <button
+            onClick={() => handleSeparateDownload('orders')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6f42c1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📋 訂單
+          </button>
+          
+          <button
+            onClick={() => handleSeparateDownload('posOrders')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#fd7e14',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            🛒 POS訂單
+          </button>
+        </div>
+      </div>
+      
+      {/* 分離上傳功能 */}
+      <div style={{ 
+        backgroundColor: '#fff3cd', 
+        padding: '15px', 
+        borderRadius: '8px', 
+        marginBottom: '20px',
+        border: '1px solid #ffeaa7'
+      }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#856404' }}>📤 資料上傳</h3>
+        
+        {/* 上傳選項 */}
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={uploadOptions.customers}
+              onChange={(e) => setUploadOptions(prev => ({ ...prev, customers: e.target.checked }))}
+            />
+            <span>👥 客戶資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={uploadOptions.products}
+              onChange={(e) => setUploadOptions(prev => ({ ...prev, products: e.target.checked }))}
+            />
+            <span>📦 產品資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <input
+              type="checkbox"
+              checked={uploadOptions.orders}
+              onChange={(e) => setUploadOptions(prev => ({ ...prev, orders: e.target.checked }))}
+            />
+            <span>📋 訂單資料</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px' }}>
+            <input
+              type="checkbox"
+              checked={uploadOptions.posOrders}
+              onChange={(e) => setUploadOptions(prev => ({ ...prev, posOrders: e.target.checked }))}
+            />
+            <span>🛒 POS銷售訂單</span>
+          </label>
+        </div>
+
+        {/* 上傳按鈕 */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleBatchUpload}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#fd7e14',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📤 批量上傳
+          </button>
+          
+          <button
+            onClick={() => handleSeparateUpload('customers')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            👥 客戶
+          </button>
+          
+          <button
+            onClick={() => handleSeparateUpload('products')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#ffc107',
+              color: '#212529',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📦 產品
+          </button>
+          
+          <button
+            onClick={() => handleSeparateUpload('orders')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#6f42c1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📋 訂單
+          </button>
+          
+          <button
+            onClick={() => handleSeparateUpload('posOrders')}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            🛒 POS訂單
+          </button>
+        </div>
+        
+        <div style={{ 
+          marginTop: '10px', 
+          fontSize: '12px', 
+          color: '#856404',
+          backgroundColor: '#fff3cd',
+          padding: '8px',
+          borderRadius: '4px',
+          border: '1px solid #ffeaa7'
+        }}>
+          ⚠️ <strong>注意：</strong>上傳會清空現有資料並替換為新資料。請確保已備份重要資料。
+        </div>
+      </div>
+      
       {error && <div className="error">{error}</div>}
       {success && <div className="success">{success}</div>}
       
@@ -2087,7 +3031,7 @@ const AdminPanel = ({ user }) => {
                         backgroundColor: orderIndex % 2 === 0 ? 'white' : '#f8f9fa' 
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {order.customer_name}
+                          {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {new Date(order.order_date).toLocaleDateString('zh-TW')}
@@ -2148,7 +3092,7 @@ const AdminPanel = ({ user }) => {
                                 ✏️ 編輯
                               </button>
                               <button
-                                onClick={() => handleDeleteOrder(order.id, order.customer_name, order.order_date)}
+                                onClick={() => handleDeleteOrder(order.id, order.customer_name || '未知客戶', order.order_date)}
                                 style={{
                                   backgroundColor: '#e74c3c',
                                   color: 'white',
@@ -2174,7 +3118,7 @@ const AdminPanel = ({ user }) => {
                         border: '2px solid #ffc107'
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {order.customer_name}
+                          {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {new Date(order.order_date).toLocaleDateString('zh-TW')}
@@ -2221,7 +3165,7 @@ const AdminPanel = ({ user }) => {
                         border: '2px solid #e67e22'
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {order.customer_name}
+                          {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {new Date(order.order_date).toLocaleDateString('zh-TW')}
@@ -2268,7 +3212,7 @@ const AdminPanel = ({ user }) => {
                         border: '2px solid #e74c3c'
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {order.customer_name}
+                          {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {new Date(order.order_date).toLocaleDateString('zh-TW')}
@@ -2315,7 +3259,7 @@ const AdminPanel = ({ user }) => {
                         backgroundColor: orderIndex % 2 === 0 ? 'white' : '#f8f9fa' 
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {order.customer_name}
+                          {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {new Date(order.order_date).toLocaleDateString('zh-TW')}
@@ -2573,7 +3517,7 @@ const AdminPanel = ({ user }) => {
                       )}
                       
                       {/* 客戶姓名 - 第二欄 */}
-                      <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '16px' }}>{order.customer_name}</div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px', fontSize: '16px' }}>{order.customer_name || '未知客戶'}</div>
                       
                       {/* 聯絡電話 - 第三欄 */}
                       <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>📞 {order.phone}</div>

@@ -1266,16 +1266,19 @@ app.post('/api/orders', (req, res) => {
   const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee, credit_card_fee, shopee_fee } = req.body;
   
   try {
-    // 取得客戶資料以檢查付款方式
-    const customer = db.customers.find(c => c.id === parseInt(customer_id));
-    if (!customer) {
-      res.status(404).json({ error: '客戶不存在' });
-      return;
+    // 取得客戶資料以檢查付款方式（允許 customer_id 為 null）
+    let customer = null;
+    if (customer_id) {
+      customer = db.customers.find(c => c.id === parseInt(customer_id));
+      if (!customer) {
+        res.status(404).json({ error: '客戶不存在' });
+        return;
+      }
     }
 
     // 計算信用卡手續費
     let creditCardFee = 0;
-    if (customer.payment_method === '信用卡') {
+    if (customer && customer.payment_method === '信用卡') {
       // 計算付費產品總金額（排除贈品）
       const paidItemsTotal = items
         .filter(item => !item.is_gift)
@@ -1287,7 +1290,7 @@ app.post('/api/orders', (req, res) => {
 
     const newOrder = {
       id: Math.max(...db.orders.map(o => o.id), 0) + 1,
-      customer_id: parseInt(customer_id),
+      customer_id: customer_id ? parseInt(customer_id) : null,
       order_date,
       delivery_date,
       status: 'pending',
