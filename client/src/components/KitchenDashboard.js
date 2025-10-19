@@ -16,9 +16,12 @@ const KitchenDashboard = () => {
   const [inventoryData, setInventoryData] = useState([]);
   const [showWeeklyDetailModal, setShowWeeklyDetailModal] = useState(false);
   const [weeklyDetailData, setWeeklyDetailData] = useState([]);
-  const [activeTab, setActiveTab] = useState('preorder'); // 'preorder' | 'walkin'
+  const [activeTab, setActiveTab] = useState('preorder'); // 'preorder' | 'walkin' | 'scheduling'
   const [selectedOrders, setSelectedOrders] = useState([]); // 選取的訂單ID陣列
   const [showStatsModal, setShowStatsModal] = useState(false); // 統計視窗顯示狀態
+  const [showPriorityModal, setShowPriorityModal] = useState(false); // 優先順序設定模態框
+  const [productPriority, setProductPriority] = useState([]); // 產品優先順序設定
+  const [schedulingData, setSchedulingData] = useState(null); // 排程數據
   
 
   const fetchProductionList = async (date) => {
@@ -46,6 +49,26 @@ const KitchenDashboard = () => {
     }
   };
 
+  const fetchProductPriority = async () => {
+    try {
+      const response = await axios.get(`${config.apiUrl}/api/products/priority`);
+      setProductPriority(response.data);
+    } catch (err) {
+      console.error('載入產品優先順序失敗:', err);
+      setProductPriority([]);
+    }
+  };
+
+  const fetchSchedulingData = async (date) => {
+    try {
+      const response = await axios.get(`${config.apiUrl}/api/scheduling/orders?date=${date}`);
+      setSchedulingData(response.data);
+    } catch (err) {
+      console.error('載入排程數據失敗:', err);
+      setSchedulingData(null);
+    }
+  };
+
   const fetchWalkinOrders = async () => {
     setLoading(true);
     setError('');
@@ -65,24 +88,30 @@ const KitchenDashboard = () => {
   const handleRefresh = () => {
     setLastRefresh(new Date());
     if (activeTab === 'preorder') {
-    fetchProductionList(selectedDate);
-    if (showWeeklyView) {
-      fetchWeeklyData();
-    }
-    } else {
+      fetchProductionList(selectedDate);
+      if (showWeeklyView) {
+        fetchWeeklyData();
+      }
+    } else if (activeTab === 'walkin') {
       fetchWalkinOrders();
+    } else if (activeTab === 'scheduling') {
+      fetchSchedulingData(selectedDate);
     }
     fetchInventoryData();
+    fetchProductPriority();
   };
 
 
   useEffect(() => {
     if (activeTab === 'preorder') {
-    fetchProductionList(selectedDate);
-    } else {
+      fetchProductionList(selectedDate);
+    } else if (activeTab === 'walkin') {
       fetchWalkinOrders();
+    } else if (activeTab === 'scheduling') {
+      fetchSchedulingData(selectedDate);
     }
     fetchInventoryData();
+    fetchProductPriority();
   }, [selectedDate, activeTab]);
 
 
@@ -382,6 +411,23 @@ const KitchenDashboard = () => {
             }}
           >
             🏪 現場訂單
+          </button>
+          <button
+            onClick={() => setActiveTab('scheduling')}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: activeTab === 'scheduling' ? '#9b59b6' : '#f8f9fa',
+              color: activeTab === 'scheduling' ? 'white' : '#6c757d',
+              border: 'none',
+              borderBottom: activeTab === 'scheduling' ? '3px solid #8e44ad' : '3px solid transparent',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              borderRadius: '8px 8px 0 0',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            🧠 排單系統
           </button>
         </div>
         
@@ -822,6 +868,239 @@ const KitchenDashboard = () => {
               </>
             )}
 
+            {/* 排單系統內容 */}
+            {activeTab === 'scheduling' && (
+              <div style={{ padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '12px', border: '2px solid #9b59b6' }}>
+                <div style={{ marginBottom: '20px' }}>
+                  <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '24px' }}>
+                    🧠 智能排單系統
+                  </h3>
+                  <p style={{ color: '#666', fontSize: '16px', lineHeight: '1.6' }}>
+                    整合現場訂單和網路訂單，根據產品優先順序和先進先出原則，生成最優製作排程
+                  </p>
+                </div>
+
+                {/* 排單控制面板 */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+                  gap: '20px',
+                  marginBottom: '30px'
+                }}>
+                  {/* 產品優先順序設定 */}
+                  <div style={{
+                    padding: '20px',
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    border: '2px solid #e9ecef',
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <h4 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '18px' }}>
+                      ⚙️ 產品優先順序設定
+                    </h4>
+                    <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
+                      設定產品製作優先順序，數字越小優先級越高
+                    </p>
+                    <button
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#9b59b6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        width: '100%'
+                      }}
+                      onClick={() => {
+                        setShowPriorityModal(true);
+                      }}
+                    >
+                      🔧 設定優先順序
+                    </button>
+                  </div>
+
+                  {/* 排程生成 */}
+                  <div style={{
+                    padding: '20px',
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    border: '2px solid #e9ecef',
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <h4 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '18px' }}>
+                      🎯 智能排程生成
+                    </h4>
+                    <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
+                      根據當前訂單和優先順序，生成最優製作排程
+                    </p>
+                    <button
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#27ae60',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        width: '100%'
+                      }}
+                      onClick={() => {
+                        fetchSchedulingData(selectedDate);
+                      }}
+                    >
+                      🚀 生成排程
+                    </button>
+                  </div>
+                </div>
+
+                {/* 排程顯示區域 */}
+                <div style={{
+                  padding: '20px',
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  border: '2px solid #e9ecef',
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                }}>
+                  <h4 style={{ margin: '0 0 15px 0', color: '#2c3e50', fontSize: '18px' }}>
+                    📋 當前排程
+                  </h4>
+                  {schedulingData ? (
+                    <div>
+                      {/* 排程摘要 */}
+                      <div style={{ 
+                        marginBottom: '20px', 
+                        padding: '15px', 
+                        backgroundColor: '#e8f4fd', 
+                        borderRadius: '8px',
+                        border: '1px solid #b3d9ff'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <strong style={{ fontSize: '18px', color: '#2c3e50' }}>
+                              📊 排程摘要
+                            </strong>
+                          </div>
+                          <div style={{ fontSize: '14px', color: '#666' }}>
+                            {schedulingData.date}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: '10px', display: 'flex', gap: '20px', fontSize: '14px' }}>
+                          <span>總訂單: <strong>{schedulingData.total_orders}</strong></span>
+                          <span>產品種類: <strong>{schedulingData.total_products}</strong></span>
+                        </div>
+                      </div>
+
+                      {/* 排程列表 */}
+                      <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                        {schedulingData.scheduling.map((product, index) => (
+                          <div key={index} style={{
+                            marginBottom: '15px',
+                            padding: '15px',
+                            backgroundColor: 'white',
+                            borderRadius: '8px',
+                            border: '2px solid #e9ecef',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{
+                                  backgroundColor: '#9b59b6',
+                                  color: 'white',
+                                  padding: '4px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold'
+                                }}>
+                                  優先級 {product.priority}
+                                </span>
+                                <h5 style={{ margin: '0', fontSize: '16px', color: '#2c3e50' }}>
+                                  {product.product_name}
+                                </h5>
+                              </div>
+                              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3498db' }}>
+                                {product.total_quantity} 瓶
+                              </div>
+                            </div>
+                            
+                            {/* 訂單詳情 */}
+                            <div style={{ fontSize: '14px', color: '#666' }}>
+                              <div style={{ marginBottom: '8px' }}>
+                                <strong>訂單詳情:</strong>
+                              </div>
+                              {product.orders.map((order, orderIndex) => (
+                                <div key={orderIndex} style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '5px 10px',
+                                  backgroundColor: '#f8f9fa',
+                                  borderRadius: '4px',
+                                  marginBottom: '5px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{
+                                      backgroundColor: order.order_type === 'preorder' ? '#3498db' : '#e74c3c',
+                                      color: 'white',
+                                      padding: '2px 6px',
+                                      borderRadius: '8px',
+                                      fontSize: '10px'
+                                    }}>
+                                      {order.order_type === 'preorder' ? '預訂' : '現場'}
+                                    </span>
+                                    <span>訂單 #{order.order_id}</span>
+                                    <span>{order.customer_name}</span>
+                                  </div>
+                                  <div style={{ fontWeight: 'bold' }}>
+                                    {order.quantity} 瓶
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      padding: '20px', 
+                      backgroundColor: '#f8f9fa', 
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                      color: '#666'
+                    }}>
+                      <p style={{ fontSize: '16px', margin: '0' }}>
+                        📋 點擊「生成排程」查看智能排程
+                      </p>
+                      <p style={{ fontSize: '14px', margin: '10px 0 0 0' }}>
+                        系統將根據產品優先順序和先進先出原則生成最優排程
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 功能說明 */}
+                <div style={{ 
+                  marginTop: '20px', 
+                  padding: '15px', 
+                  backgroundColor: '#e8f4fd', 
+                  borderRadius: '8px',
+                  border: '1px solid #b3d9ff'
+                }}>
+                  <h5 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>💡 排單系統功能說明</h5>
+                  <ul style={{ margin: '0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
+                    <li>整合現場訂單和網路訂單，統一管理</li>
+                    <li>根據產品優先順序自動排序（可自定義）</li>
+                    <li>先進先出原則，確保公平性</li>
+                    <li>考慮庫存狀態，優化製作效率</li>
+                    <li>實時更新排程，適應訂單變化</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
             {/* 無訂單時的顯示 */}
             {((activeTab === 'preorder' && productionList.length === 0) || 
               (activeTab === 'walkin' && walkinOrders.length === 0)) && (
@@ -837,11 +1116,13 @@ const KitchenDashboard = () => {
       <div className="card">
         <h2>使用說明</h2>
         <div style={{ lineHeight: '1.6', color: '#666' }}>
-          <p>• 此頁面顯示當日需要製作的所有產品總數量</p>
-          <p>• 廚房員工只需專注於製作數量，不需要知道客戶資訊</p>
+          <p><strong>📦 預訂訂單：</strong>顯示當日需要製作的所有產品總數量，廚房員工只需專注於製作數量</p>
+          <p><strong>🏪 現場訂單：</strong>顯示即時現場訂單，支援多選統計功能</p>
+          <p><strong>🧠 排單系統：</strong>整合所有訂單，根據產品優先順序和先進先出原則生成最優排程</p>
           <p>• 可以切換日期查看不同日期的製作需求</p>
           <p>• 完成製作後，點擊「標記完成」按鈕更新產品狀態</p>
           <p>• 狀態會自動同步到「客戶訂單」頁面</p>
+          <p>• 排單系統支援自定義產品優先順序，優化製作效率</p>
         </div>
       </div>
 
@@ -1135,6 +1416,204 @@ const KitchenDashboard = () => {
                 }}
               >
                 關閉並清除選取
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 產品優先順序設定模態框 */}
+      {showPriorityModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '30px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              paddingBottom: '15px',
+              borderBottom: '2px solid #e9ecef'
+            }}>
+              <h2 style={{ 
+                margin: 0, 
+                color: '#2c3e50',
+                fontSize: '24px',
+                fontWeight: 'bold'
+              }}>
+                ⚙️ 產品優先順序設定
+              </h2>
+              <button
+                onClick={() => setShowPriorityModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#7f8c8d',
+                  padding: '5px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
+                設定產品製作優先順序，數字越小優先級越高。拖拽可調整順序。
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              {productPriority.map((product, index) => (
+                <div key={product.product_id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '15px',
+                  padding: '12px 15px',
+                  marginBottom: '8px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px',
+                  border: '1px solid #e9ecef'
+                }}>
+                  <div style={{
+                    backgroundColor: '#9b59b6',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    minWidth: '60px',
+                    textAlign: 'center'
+                  }}>
+                    {product.priority}
+                  </div>
+                  <div style={{ flex: 1, fontSize: '16px', fontWeight: '500' }}>
+                    {product.product_name}
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button
+                      onClick={() => {
+                        if (product.priority > 1) {
+                          const newPriority = [...productPriority];
+                          const currentIndex = newPriority.findIndex(p => p.product_id === product.product_id);
+                          const swapIndex = newPriority.findIndex(p => p.priority === product.priority - 1);
+                          
+                          if (currentIndex !== -1 && swapIndex !== -1) {
+                            [newPriority[currentIndex].priority, newPriority[swapIndex].priority] = 
+                            [newPriority[swapIndex].priority, newPriority[currentIndex].priority];
+                            setProductPriority(newPriority);
+                          }
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#3498db',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (product.priority < productPriority.length) {
+                          const newPriority = [...productPriority];
+                          const currentIndex = newPriority.findIndex(p => p.product_id === product.product_id);
+                          const swapIndex = newPriority.findIndex(p => p.priority === product.priority + 1);
+                          
+                          if (currentIndex !== -1 && swapIndex !== -1) {
+                            [newPriority[currentIndex].priority, newPriority[swapIndex].priority] = 
+                            [newPriority[swapIndex].priority, newPriority[currentIndex].priority];
+                            setProductPriority(newPriority);
+                          }
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#3498db',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              gap: '15px',
+              paddingTop: '20px',
+              borderTop: '2px solid #e9ecef'
+            }}>
+              <button
+                onClick={() => setShowPriorityModal(false)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await axios.put(`${config.apiUrl}/api/products/priority`, {
+                      priority_settings: productPriority
+                    });
+                    setShowPriorityModal(false);
+                    alert('產品優先順序更新成功！');
+                  } catch (error) {
+                    alert('更新失敗: ' + error.message);
+                  }
+                }}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#27ae60',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                儲存設定
               </button>
             </div>
           </div>

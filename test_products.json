@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "name": "蔬果73-元氣綠",
+    "price": 120,
+    "description": "綠色蔬果系列，富含維生素",
+    "current_stock": 1,
+    "min_stock": 10,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2025-10-01T11:09:10.084Z"
+  },
+  {
+    "id": 2,
+    "name": "蔬果73-活力紅",
+    "price": 134,
+    "description": "紅色蔬果系列，抗氧化",
+    "current_stock": 25,
+    "min_stock": 10,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2025-10-01T10:12:08.524Z"
+  }
+]

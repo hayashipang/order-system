@@ -1,0 +1,26 @@
+{
+  "backup_date": "2025-01-01T12:00:00Z",
+  "data_type": "orders",
+  "orders": [
+    {
+      "id": 1,
+      "customer_id": 1,
+      "order_date": "2025-01-01",
+      "delivery_date": "2025-01-02",
+      "notes": "測試訂單",
+      "items": [
+        {
+          "product_name": "蔬果73-元氣綠",
+          "quantity": 2,
+          "unit_price": 120,
+          "special_notes": "",
+          "is_gift": false
+        }
+      ],
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "total_amount": 240,
+      "created_at": "2025-01-01T12:00:00Z"
+    }
+  ]
+}

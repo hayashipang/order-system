@@ -214,61 +214,6 @@ app.get('/api/products', checkDatabaseReady, (req, res) => {
   res.json(db.products);
 });
 
-// 取得產品優先順序設定
-app.get('/api/products/priority', checkDatabaseReady, (req, res) => {
-  try {
-    // 如果沒有優先順序設定，返回預設值
-    if (!db.product_priority) {
-      db.product_priority = db.products.map((product, index) => ({
-        product_id: product.id,
-        product_name: product.name,
-        priority: index + 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-      saveData();
-    }
-    res.json(db.product_priority);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 更新產品優先順序設定
-app.put('/api/products/priority', (req, res) => {
-  try {
-    const { priority_settings } = req.body;
-    
-    if (!Array.isArray(priority_settings)) {
-      return res.status(400).json({ error: '優先順序設定必須是陣列格式' });
-    }
-    
-    // 驗證每個設定都有必要的欄位
-    for (const setting of priority_settings) {
-      if (!setting.product_id || !setting.priority) {
-        return res.status(400).json({ error: '每個設定都必須包含 product_id 和 priority' });
-      }
-    }
-    
-    // 更新優先順序設定
-    db.product_priority = priority_settings.map(setting => ({
-      product_id: setting.product_id,
-      product_name: setting.product_name || db.products.find(p => p.id === setting.product_id)?.name || '未知產品',
-      priority: parseInt(setting.priority),
-      updated_at: new Date().toISOString()
-    }));
-    
-    saveData();
-    
-    res.json({ 
-      message: '產品優先順序更新成功', 
-      priority_settings: db.product_priority 
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // 取得運費設定
 app.get('/api/shipping-fee', checkDatabaseReady, (req, res) => {
   res.json({ shippingFee: db.shippingFee || 120 });
@@ -2054,108 +1999,6 @@ app.get('/api/shared/reports/daily/:date', checkDatabaseReady, (req, res) => {
   }
 });
 
-// 智能排程 API
-app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
-  try {
-    const { date } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    
-    // 收集所有訂單（預訂訂單 + 現場訂單）
-    const allOrders = [];
-    
-    // 1. 收集預訂訂單
-    const preOrders = db.orders.filter(order => 
-      order.delivery_date === targetDate && order.status !== 'cancelled'
-    );
-    
-    preOrders.forEach(order => {
-      order.items.forEach(item => {
-        allOrders.push({
-          order_id: order.id,
-          order_type: 'preorder',
-          customer_name: order.customer_name,
-          order_time: order.created_at,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          is_gift: item.is_gift || false,
-          priority: getProductPriority(item.product_name)
-        });
-      });
-    });
-    
-    // 2. 收集現場訂單
-    const walkinOrders = db.orders.filter(order => 
-      order.order_type === 'walkin' && 
-      order.created_at && 
-      order.created_at.startsWith(targetDate) &&
-      order.status !== 'cancelled'
-    );
-    
-    walkinOrders.forEach(order => {
-      order.items.forEach(item => {
-        allOrders.push({
-          order_id: order.id,
-          order_type: 'walkin',
-          customer_name: order.customer_name || '現場客戶',
-          order_time: order.created_at,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          is_gift: item.is_gift || false,
-          priority: getProductPriority(item.product_name)
-        });
-      });
-    });
-    
-    // 3. 智能排序：先進先出 + 產品優先順序
-    const sortedOrders = allOrders.sort((a, b) => {
-      // 先按產品優先順序排序（數字越小優先級越高）
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority;
-      }
-      // 相同優先順序時，按訂單時間排序（先進先出）
-      return new Date(a.order_time) - new Date(b.order_time);
-    });
-    
-    // 4. 按產品分組
-    const productGroups = {};
-    sortedOrders.forEach(order => {
-      if (!productGroups[order.product_name]) {
-        productGroups[order.product_name] = {
-          product_name: order.product_name,
-          priority: order.priority,
-          total_quantity: 0,
-          orders: []
-        };
-      }
-      productGroups[order.product_name].total_quantity += order.quantity;
-      productGroups[order.product_name].orders.push(order);
-    });
-    
-    // 5. 轉換為陣列並按優先順序排序
-    const schedulingResult = Object.values(productGroups).sort((a, b) => a.priority - b.priority);
-    
-    res.json({
-      date: targetDate,
-      total_orders: allOrders.length,
-      total_products: schedulingResult.length,
-      scheduling: schedulingResult
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 輔助函數：取得產品優先順序
-function getProductPriority(productName) {
-  if (!db.product_priority) {
-    return 999; // 預設最低優先順序
-  }
-  
-  const prioritySetting = db.product_priority.find(p => p.product_name === productName);
-  return prioritySetting ? prioritySetting.priority : 999;
-}
-
 // 根路徑回應
 app.get('/', (req, res) => {
   res.json({ 
@@ -2163,9 +2006,6 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: [
       'GET /api/products - 取得產品列表',
-      'GET /api/products/priority - 取得產品優先順序設定',
-      'PUT /api/products/priority - 更新產品優先順序設定',
-      'GET /api/scheduling/orders - 智能排程API',
       'GET /api/customers - 取得客戶列表',
       'GET /api/kitchen/production/:date - 取得廚房製作清單',
       'GET /api/orders/customers/:date - 取得客戶訂單清單',

@@ -1,0 +1,328 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password": "admin123",
+      "role": "admin"
+    },
+    {
+      "id": 2,
+      "username": "kitchen",
+      "password": "kitchen123",
+      "role": "kitchen"
+    }
+  ],
+  "customers": [
+    {
+      "id": 1,
+      "name": "安安",
+      "phone": "123",
+      "address": "123",
+      "family_mart_address": "",
+      "source": "蝦皮訂購",
+      "payment_method": "信用卡",
+      "order_number": "123"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "name": "蔬果73-元氣綠",
+      "price": 134,
+      "description": "綠色蔬果系列，富含維生素",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.254Z",
+      "updated_at": "2025-10-01T14:51:09.797Z"
+    },
+    {
+      "id": 2,
+      "name": "蔬果73-活力紅",
+      "price": 134,
+      "description": "紅色蔬果系列，抗氧化",
+      "current_stock": 20,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.258Z",
+      "updated_at": "2025-10-01T14:51:45.920Z"
+    },
+    {
+      "id": 3,
+      "name": "蔬果73-亮妍莓",
+      "price": 134,
+      "description": "莓果系列，美容養顏",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.261Z",
+      "updated_at": "2025-10-01T14:51:45.928Z"
+    },
+    {
+      "id": 4,
+      "name": "蔬菜73-幸運果",
+      "price": 134,
+      "description": "黃橘色蔬果系列，提升免疫力",
+      "current_stock": 18,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.265Z",
+      "updated_at": "2025-10-01T14:51:39.725Z"
+    },
+    {
+      "id": 5,
+      "name": "蔬菜100-順暢綠",
+      "price": 134,
+      "description": "100% 綠色蔬菜，促進消化",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.268Z",
+      "updated_at": "2025-10-01T14:51:39.732Z"
+    },
+    {
+      "id": 6,
+      "name": "蔬菜100-養生黑",
+      "price": 134,
+      "description": "100% 黑色養生，滋補強身",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.272Z",
+      "updated_at": "2025-10-01T14:51:45.938Z"
+    },
+    {
+      "id": 7,
+      "name": "蔬菜100-養眼晶",
+      "price": 139,
+      "description": "100% 有機枸杞，護眼明目",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.276Z",
+      "updated_at": "2025-10-01T14:51:16.353Z"
+    },
+    {
+      "id": 8,
+      "name": "蔬菜100-法國黑巧70",
+      "price": 139,
+      "description": "100% 法國黑巧克力，70% 可可含量",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.279Z",
+      "updated_at": "2025-10-01T14:51:16.361Z"
+    },
+    {
+      "id": 9,
+      "name": "隨機送",
+      "price": 0,
+      "description": "",
+      "current_stock": 0,
+      "min_stock": 10,
+      "created_at": "2025-10-01T12:27:55.284Z",
+      "updated_at": "2025-10-01T13:51:30.818Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": 2,
+      "customer_id": null,
+      "customer_name": "現場客戶",
+      "order_date": "2025-10-01",
+      "order_time": "2025-10-01T14:51:09.783Z",
+      "delivery_date": "2025-10-01",
+      "status": "completed",
+      "notes": "現場銷售 - 付款方式: cash",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0,
+      "order_type": "walk-in",
+      "subtotal": 536,
+      "customer_payment": 600,
+      "change": 64,
+      "created_by": "pos-system"
+    },
+    {
+      "id": 3,
+      "customer_id": null,
+      "customer_name": "現場客戶",
+      "order_date": "2025-10-01",
+      "order_time": "2025-10-01T14:51:16.325Z",
+      "delivery_date": "2025-10-01",
+      "status": "completed",
+      "notes": "現場銷售 - 付款方式: cash",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0,
+      "order_type": "walk-in",
+      "subtotal": 546,
+      "customer_payment": 600,
+      "change": 54,
+      "created_by": "pos-system"
+    },
+    {
+      "id": 4,
+      "customer_id": null,
+      "customer_name": "現場客戶",
+      "order_date": "2025-10-01",
+      "order_time": "2025-10-01T14:51:39.709Z",
+      "delivery_date": "2025-10-01",
+      "status": "completed",
+      "notes": "現場銷售 - 付款方式: cash",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0,
+      "order_type": "walk-in",
+      "subtotal": 268,
+      "customer_payment": 500,
+      "change": 232,
+      "created_by": "pos-system"
+    },
+    {
+      "id": 5,
+      "customer_id": null,
+      "customer_name": "現場客戶",
+      "order_date": "2025-10-01",
+      "order_time": "2025-10-01T14:51:45.909Z",
+      "delivery_date": "2025-10-01",
+      "status": "completed",
+      "notes": "現場銷售 - 付款方式: cash",
+      "shipping_type": "none",
+      "shipping_fee": 0,
+      "credit_card_fee": 0,
+      "order_type": "walk-in",
+      "subtotal": 402,
+      "customer_payment": 500,
+      "change": 98,
+      "created_by": "pos-system"
+    }
+  ],
+  "order_items": [
+    {
+      "id": 5,
+      "order_id": 2,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 6,
+      "order_id": 2,
+      "product_name": "蔬菜73-幸運果",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 7,
+      "order_id": 2,
+      "product_name": "蔬果73-元氣綠",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 8,
+      "order_id": 2,
+      "product_name": "蔬果73-活力紅",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 9,
+      "order_id": 3,
+      "product_name": "蔬菜100-養生黑",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 10,
+      "order_id": 3,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 11,
+      "order_id": 3,
+      "product_name": "蔬菜100-法國黑巧70",
+      "quantity": 1,
+      "unit_price": 139,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 12,
+      "order_id": 3,
+      "product_name": "蔬菜100-養眼晶",
+      "quantity": 1,
+      "unit_price": 139,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 13,
+      "order_id": 4,
+      "product_name": "蔬菜100-順暢綠",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 14,
+      "order_id": 4,
+      "product_name": "蔬菜73-幸運果",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 15,
+      "order_id": 5,
+      "product_name": "蔬菜100-養生黑",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 16,
+      "order_id": 5,
+      "product_name": "蔬果73-亮妍莓",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    },
+    {
+      "id": 17,
+      "order_id": 5,
+      "product_name": "蔬果73-活力紅",
+      "quantity": 1,
+      "unit_price": 134,
+      "special_notes": "",
+      "status": "completed",
+      "is_gift": false
+    }
+  ],
+  "inventory_transactions": [],
+  "shippingFee": 120
+}
