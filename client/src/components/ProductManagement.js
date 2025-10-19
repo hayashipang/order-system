@@ -50,6 +50,18 @@ const ProductManagement = () => {
     }
   };
 
+  // 同步產品優先順序設定
+  const syncProductPriority = async () => {
+    try {
+      // 調用後端API來同步優先順序設定
+      await axios.post(`${config.apiUrl}/api/products/sync-priority`);
+      console.log('產品優先順序同步成功');
+    } catch (err) {
+      console.error('同步產品優先順序失敗:', err);
+      // 不顯示錯誤給用戶，因為這不是關鍵操作
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -79,6 +91,9 @@ const ProductManagement = () => {
       setEditingProduct(null);
       setShowForm(false);
       await fetchProducts();
+      
+      // 同步更新產品優先順序設定
+      await syncProductPriority();
     } catch (err) {
       console.error('產品操作錯誤:', err);
       console.error('錯誤響應:', err.response?.data);
@@ -108,7 +123,10 @@ const ProductManagement = () => {
     try {
       await axios.delete(`${config.apiUrl}/api/products/${id}`);
       setSuccess('產品刪除成功！');
-      fetchProducts();
+      await fetchProducts();
+      
+      // 同步更新產品優先順序設定
+      await syncProductPriority();
     } catch (err) {
       setError('刪除失敗: ' + (err.response?.data?.error || err.message));
     } finally {

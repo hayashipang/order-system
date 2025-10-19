@@ -269,6 +269,65 @@ app.put('/api/products/priority', (req, res) => {
   }
 });
 
+// 同步產品優先順序設定
+app.post('/api/products/sync-priority', (req, res) => {
+  try {
+    // 如果沒有優先順序設定，初始化
+    if (!db.product_priority) {
+      db.product_priority = [];
+    }
+    
+    // 獲取所有現有產品
+    const existingProducts = db.products;
+    const existingPriorityIds = db.product_priority.map(p => p.product_id);
+    
+    // 為新產品添加優先順序設定
+    const newProducts = existingProducts.filter(product => 
+      !existingPriorityIds.includes(product.id)
+    );
+    
+    if (newProducts.length > 0) {
+      const maxPriority = Math.max(...db.product_priority.map(p => p.priority), 0);
+      
+      newProducts.forEach((product, index) => {
+        db.product_priority.push({
+          product_id: product.id,
+          product_name: product.name,
+          priority: maxPriority + index + 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      });
+    }
+    
+    // 移除已刪除產品的優先順序設定
+    const existingProductIds = existingProducts.map(p => p.id);
+    db.product_priority = db.product_priority.filter(priority => 
+      existingProductIds.includes(priority.product_id)
+    );
+    
+    // 更新產品名稱（如果產品名稱有變更）
+    db.product_priority.forEach(priority => {
+      const product = existingProducts.find(p => p.id === priority.product_id);
+      if (product && product.name !== priority.product_name) {
+        priority.product_name = product.name;
+        priority.updated_at = new Date().toISOString();
+      }
+    });
+    
+    saveData();
+    
+    res.json({ 
+      message: '產品優先順序同步成功', 
+      priority_settings: db.product_priority,
+      synced_products: newProducts.length,
+      removed_products: existingPriorityIds.length - db.product_priority.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 取得運費設定
 app.get('/api/shipping-fee', checkDatabaseReady, (req, res) => {
   res.json({ shippingFee: db.shippingFee || 120 });
@@ -339,6 +398,10 @@ app.post('/api/products', (req, res) => {
     };
     
     db.products.push(newProduct);
+    
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     
     res.json(newProduct);
@@ -385,6 +448,9 @@ app.put('/api/products/:id', (req, res) => {
     
     console.log('更新後產品:', db.products[productIndex]);
     
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     res.json({ 
       message: '產品更新成功', 
@@ -417,6 +483,10 @@ app.delete('/api/products/:id', (req, res) => {
     }
     
     db.products.splice(productIndex, 1);
+    
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     res.json({ message: '產品刪除成功' });
   } catch (error) {
@@ -2161,6 +2231,62 @@ function getProductPriority(productName) {
   
   const prioritySetting = db.product_priority.find(p => p.product_name === productName);
   return prioritySetting ? prioritySetting.priority : 999;
+}
+
+// 輔助函數：同步產品優先順序設定
+function syncProductPriority() {
+  try {
+    // 如果沒有優先順序設定，初始化
+    if (!db.product_priority) {
+      db.product_priority = [];
+    }
+    
+    // 獲取所有現有產品
+    const existingProducts = db.products;
+    const existingPriorityIds = db.product_priority.map(p => p.product_id);
+    
+    // 為新產品添加優先順序設定
+    const newProducts = existingProducts.filter(product => 
+      !existingPriorityIds.includes(product.id)
+    );
+    
+    if (newProducts.length > 0) {
+      const maxPriority = Math.max(...db.product_priority.map(p => p.priority), 0);
+      
+      newProducts.forEach((product, index) => {
+        db.product_priority.push({
+          product_id: product.id,
+          product_name: product.name,
+          priority: maxPriority + index + 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      });
+    }
+    
+    // 移除已刪除產品的優先順序設定
+    const existingProductIds = existingProducts.map(p => p.id);
+    db.product_priority = db.product_priority.filter(priority => 
+      existingProductIds.includes(priority.product_id)
+    );
+    
+    // 更新產品名稱（如果產品名稱有變更）
+    db.product_priority.forEach(priority => {
+      const product = existingProducts.find(p => p.id === priority.product_id);
+      if (product && product.name !== priority.product_name) {
+        priority.product_name = product.name;
+        priority.updated_at = new Date().toISOString();
+      }
+    });
+    
+    console.log('產品優先順序同步完成:', {
+      total_products: existingProducts.length,
+      total_priorities: db.product_priority.length,
+      new_products: newProducts.length
+    });
+  } catch (error) {
+    console.error('同步產品優先順序失敗:', error);
+  }
 }
 
 // 根路徑回應
