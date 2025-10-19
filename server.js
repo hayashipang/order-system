@@ -2060,6 +2060,9 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     const { date } = req.query;
     const targetDate = date || new Date().toISOString().split('T')[0];
     
+    console.log('智能排程API請求:', { date: targetDate });
+    console.log('資料庫訂單數量:', db.orders ? db.orders.length : 0);
+    
     // 收集所有訂單（預訂訂單 + 現場訂單）
     const allOrders = [];
     
