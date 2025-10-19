@@ -2069,7 +2069,8 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     );
     
     preOrders.forEach(order => {
-      order.items.forEach(item => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
         allOrders.push({
           order_id: order.id,
           order_type: 'preorder',
@@ -2080,7 +2081,8 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
           is_gift: item.is_gift || false,
           priority: getProductPriority(item.product_name)
         });
-      });
+        });
+      }
     });
     
     // 2. 收集現場訂單
@@ -2092,7 +2094,8 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     );
     
     walkinOrders.forEach(order => {
-      order.items.forEach(item => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach(item => {
         allOrders.push({
           order_id: order.id,
           order_type: 'walkin',
@@ -2103,7 +2106,8 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
           is_gift: item.is_gift || false,
           priority: getProductPriority(item.product_name)
         });
-      });
+        });
+      }
     });
     
     // 3. 智能排序：先進先出 + 產品優先順序
