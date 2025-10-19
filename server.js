@@ -2087,7 +2087,7 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     
     // 2. 收集現場訂單
     const walkinOrders = db.orders.filter(order => 
-      order.order_type === 'walkin' && 
+      (order.order_type === 'walkin' || order.order_type === 'walk-in') && 
       order.created_at && 
       order.created_at.startsWith(targetDate) &&
       order.status !== 'cancelled'
