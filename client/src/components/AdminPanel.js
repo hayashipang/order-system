@@ -4228,15 +4228,7 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'shipping-management' && renderShippingManagement()}
       {activeTab === 'edit-order' && renderEditOrderForm()}
       
-      {/* 參數測試彈窗 */}
-      <ParameterTestModal
-        isOpen={isParameterTestModalOpen}
-        onClose={() => setIsParameterTestModalOpen(false)}
-        onTestComplete={(results) => {
-          console.log('參數測試完成:', results);
-          setSuccess('參數測試完成！請查看推薦結果。');
-        }}
-      />
+      {/* 參數測試彈窗已移除 */}
     </div>
   );
 };
