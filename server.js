@@ -2242,8 +2242,11 @@ function generateSmartSchedule(targetDate, config) {
     // 分析銷售趨勢
     const salesTrend = analyzeSalesTrend();
     
+    // 分析當日訂單需求
+    const dailyOrderDemand = analyzeDailyOrderDemand(targetDate);
+    
     // 生成生產計劃
-    const productionPlan = generateProductionPlan(inventoryAnalysis, salesTrend, config);
+    const productionPlan = generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand, config);
     
     // 計算時間安排
     const timeSchedule = calculateTimeSchedule(productionPlan, config);
@@ -2298,9 +2301,9 @@ function analyzeInventory() {
       priority: priority,
       urgency_score: urgencyScore,
       status: currentStock < minStock ? 'urgent' : currentStock < minStock * 1.5 ? 'warning' : 'normal'
+      });
     });
-  });
-  
+    
   return analysis.sort((a, b) => b.urgency_score - a.urgency_score);
 }
 
@@ -2335,37 +2338,125 @@ function analyzeSalesTrend() {
   return trend.sort((a, b) => b.weekly_sales - a.weekly_sales);
 }
 
+// 分析當日訂單需求
+function analyzeDailyOrderDemand(targetDate) {
+  const demand = [];
+  
+  // 獲取當日的所有訂單（預訂和現場）
+  const dailyOrders = db.orders.filter(order => {
+    const orderDeliveryDate = order.delivery_date || order.order_date;
+    return orderDeliveryDate === targetDate && order.status !== 'cancelled';
+  });
+  
+  console.log(`當日訂單數量: ${dailyOrders.length}`);
+  
+  // 按產品統計需求
+  const productDemand = {};
+  
+  dailyOrders.forEach(order => {
+    const orderItems = db.order_items.filter(item => item.order_id === order.id);
+      
+      orderItems.forEach(item => {
+      if (!productDemand[item.product_name]) {
+        productDemand[item.product_name] = {
+          product_name: item.product_name,
+          total_quantity: 0,
+          orders: []
+        };
+      }
+      
+      productDemand[item.product_name].total_quantity += item.quantity;
+      productDemand[item.product_name].orders.push({
+        order_id: order.id,
+        customer_name: order.customer_name,
+          quantity: item.quantity,
+        order_type: order.order_type || 'preorder'
+        });
+      });
+    });
+    
+  // 轉換為數組並按需求量排序
+  Object.values(productDemand).forEach(demandItem => {
+    const product = db.products.find(p => p.name === demandItem.product_name);
+    if (product) {
+      demand.push({
+        product_id: product.id,
+        product_name: demandItem.product_name,
+        daily_demand: demandItem.total_quantity,
+        orders: demandItem.orders,
+        priority: getProductPriority(demandItem.product_name)
+      });
+    }
+  });
+  
+  console.log('當日訂單需求:', demand);
+  return demand.sort((a, b) => b.daily_demand - a.daily_demand);
+}
+
 // 生成生產計劃
-function generateProductionPlan(inventoryAnalysis, salesTrend, config) {
+function generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand, config) {
   const plan = [];
   let remainingCapacity = config.daily_capacity;
   
-  // 按緊急程度分配產能
-  inventoryAnalysis.forEach(item => {
+  // 優先處理當日訂單需求
+  dailyOrderDemand.forEach(demandItem => {
     if (remainingCapacity <= 0) return;
     
-    const salesData = salesTrend.find(s => s.product_id === item.product_id);
-    const salesBoost = salesData ? Math.min(salesData.weekly_sales * 0.2, 10) : 0;
+    const inventoryItem = inventoryAnalysis.find(i => i.product_id === demandItem.product_id);
+    const currentStock = inventoryItem ? inventoryItem.current_stock : 0;
     
-    const recommendedQuantity = Math.min(
-      item.stock_deficit + Math.max(5, salesBoost),
-      remainingCapacity,
-      config.daily_capacity
-    );
+    // 計算需要生產的數量：訂單需求 - 現有庫存
+    const productionNeeded = Math.max(0, demandItem.daily_demand - currentStock);
     
-    if (recommendedQuantity > 0) {
+    if (productionNeeded > 0) {
+      const productionQuantity = Math.min(productionNeeded, remainingCapacity);
+      
       plan.push({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        quantity: recommendedQuantity,
-        reason: getProductionReason(item, salesData),
-        priority: item.priority,
-        estimated_time: estimateProductionTime(recommendedQuantity, config)
+        product_id: demandItem.product_id,
+        product_name: demandItem.product_name,
+        quantity: productionQuantity,
+        reason: `當日訂單需求${demandItem.daily_demand}瓶，現有庫存${currentStock}瓶`,
+        priority: demandItem.priority,
+        estimated_time: estimateProductionTime(productionQuantity, config),
+        order_demand: demandItem.daily_demand,
+        current_stock: currentStock
       });
       
-      remainingCapacity -= recommendedQuantity;
+      remainingCapacity -= productionQuantity;
     }
   });
+  
+  // 如果還有剩餘產能，處理庫存補貨需求
+  if (remainingCapacity > 0) {
+    inventoryAnalysis.forEach(item => {
+      if (remainingCapacity <= 0) return;
+      
+      // 檢查是否已經在計劃中
+      const alreadyPlanned = plan.find(p => p.product_id === item.product_id);
+      if (alreadyPlanned) return;
+      
+      const salesData = salesTrend.find(s => s.product_id === item.product_id);
+      const salesBoost = salesData ? Math.min(salesData.weekly_sales * 0.2, 10) : 0;
+      
+      const recommendedQuantity = Math.min(
+        item.stock_deficit + Math.max(5, salesBoost),
+        remainingCapacity
+      );
+      
+      if (recommendedQuantity > 0) {
+        plan.push({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: recommendedQuantity,
+          reason: getProductionReason(item, salesData),
+          priority: item.priority,
+          estimated_time: estimateProductionTime(recommendedQuantity, config)
+        });
+        
+        remainingCapacity -= recommendedQuantity;
+      }
+    });
+  }
   
   return plan;
 }
