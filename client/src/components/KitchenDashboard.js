@@ -1016,7 +1016,7 @@ const KitchenDashboard = () => {
 
                       {/* 排程列表 */}
                       <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                        {schedulingData.scheduling.map((product, index) => (
+                        {schedulingData.scheduling && schedulingData.scheduling.length > 0 ? schedulingData.scheduling.map((product, index) => (
                           <div key={index} style={{
                             marginBottom: '15px',
                             padding: '15px',
@@ -1051,7 +1051,7 @@ const KitchenDashboard = () => {
                               <div style={{ marginBottom: '8px' }}>
                                 <strong>訂單詳情:</strong>
                               </div>
-                              {product.orders.map((order, orderIndex) => (
+                              {product.orders && product.orders.map((order, orderIndex) => (
                                 <div key={orderIndex} style={{
                                   display: 'flex',
                                   justifyContent: 'space-between',
@@ -1081,7 +1081,22 @@ const KitchenDashboard = () => {
                               ))}
                             </div>
                           </div>
-                        ))}
+                        )) : (
+                          <div style={{ 
+                            padding: '20px', 
+                            backgroundColor: '#f8f9fa', 
+                            borderRadius: '8px',
+                            textAlign: 'center',
+                            color: '#666'
+                          }}>
+                            <p style={{ fontSize: '16px', margin: '0' }}>
+                              📋 今日無排程項目
+                            </p>
+                            <p style={{ fontSize: '14px', margin: '10px 0 0 0' }}>
+                              所有產品庫存充足，無需額外生產
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
