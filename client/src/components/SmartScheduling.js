@@ -2,6 +2,15 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import config from '../config';
 
+// 確保使用本地API URL
+const getApiUrl = () => {
+  // 在開發環境或本地測試時強制使用本地API
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:3001';
+  }
+  return config.apiUrl;
+};
+
 const SmartScheduling = () => {
   const [schedulingConfig, setSchedulingConfig] = useState({
     daily_capacity: 40,
@@ -22,7 +31,7 @@ const SmartScheduling = () => {
   const loadSchedulingConfig = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${config.API_BASE_URL}/api/scheduling/config`);
+      const response = await axios.get(`${getApiUrl()}/api/scheduling/config`);
       setSchedulingConfig(response.data);
     } catch (err) {
       console.error('載入排程配置失敗:', err);
@@ -37,7 +46,7 @@ const SmartScheduling = () => {
     try {
       setLoading(true);
       setError('');
-      await axios.put(`${config.API_BASE_URL}/api/scheduling/config`, schedulingConfig);
+      await axios.put(`${getApiUrl()}/api/scheduling/config`, schedulingConfig);
       setSuccess('排程配置更新成功！');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -53,7 +62,7 @@ const SmartScheduling = () => {
     try {
       setLoading(true);
       setError('');
-      const response = await axios.get(`${config.API_BASE_URL}/api/scheduling/orders`);
+      const response = await axios.get(`${getApiUrl()}/api/scheduling/orders`);
       setScheduleData(response.data);
       setActiveTab('schedule');
     } catch (err) {
@@ -66,9 +75,11 @@ const SmartScheduling = () => {
 
   // 處理配置變更
   const handleConfigChange = (field, value) => {
+    // 確保數值不為NaN
+    const safeValue = isNaN(value) ? 0 : value;
     setSchedulingConfig(prev => ({
       ...prev,
-      [field]: value
+      [field]: safeValue
     }));
   };
 
@@ -118,6 +129,18 @@ const SmartScheduling = () => {
         >
           📊 分析報告
         </button>
+        <button 
+          className={`tab ${activeTab === 'multi-day' ? 'active' : ''}`}
+          onClick={() => setActiveTab('multi-day')}
+        >
+          📅 多日排程
+        </button>
+        <button 
+          className={`tab ${activeTab === 'deferred' ? 'active' : ''}`}
+          onClick={() => setActiveTab('deferred')}
+        >
+          ⏰ 遞延訂單
+        </button>
       </div>
 
       {/* 排程配置標籤頁 */}
@@ -132,8 +155,8 @@ const SmartScheduling = () => {
                   type="number"
                   min="1"
                   max="200"
-                  value={schedulingConfig.daily_capacity}
-                  onChange={(e) => handleConfigChange('daily_capacity', parseInt(e.target.value))}
+                  value={schedulingConfig.daily_capacity || 40}
+                  onChange={(e) => handleConfigChange('daily_capacity', parseInt(e.target.value) || 40)}
                 />
                 <small>每日最大生產瓶數</small>
               </div>
@@ -144,8 +167,8 @@ const SmartScheduling = () => {
                   type="number"
                   min="1"
                   max="10"
-                  value={schedulingConfig.staff_count}
-                  onChange={(e) => handleConfigChange('staff_count', parseInt(e.target.value))}
+                  value={schedulingConfig.staff_count || 1}
+                  onChange={(e) => handleConfigChange('staff_count', parseInt(e.target.value) || 1)}
                 />
                 <small>參與生產的人員數量</small>
               </div>
@@ -157,8 +180,8 @@ const SmartScheduling = () => {
                   min="0.5"
                   max="10"
                   step="0.1"
-                  value={schedulingConfig.minutes_per_bottle}
-                  onChange={(e) => handleConfigChange('minutes_per_bottle', parseFloat(e.target.value))}
+                  value={schedulingConfig.minutes_per_bottle || 1.5}
+                  onChange={(e) => handleConfigChange('minutes_per_bottle', parseFloat(e.target.value) || 1.5)}
                 />
                 <small>製作一瓶所需的時間</small>
               </div>
@@ -174,8 +197,8 @@ const SmartScheduling = () => {
                   type="number"
                   min="1"
                   max="100"
-                  value={schedulingConfig.min_stock}
-                  onChange={(e) => handleConfigChange('min_stock', parseInt(e.target.value))}
+                  value={schedulingConfig.min_stock || 10}
+                  onChange={(e) => handleConfigChange('min_stock', parseInt(e.target.value) || 10)}
                 />
                 <small>每種產品的最低安全庫存</small>
               </div>
@@ -186,8 +209,8 @@ const SmartScheduling = () => {
                   type="number"
                   min="1"
                   max="24"
-                  value={schedulingConfig.working_hours}
-                  onChange={(e) => handleConfigChange('working_hours', parseInt(e.target.value))}
+                  value={schedulingConfig.working_hours || 8}
+                  onChange={(e) => handleConfigChange('working_hours', parseInt(e.target.value) || 8)}
                 />
                 <small>每日工作時間</small>
               </div>
@@ -198,8 +221,8 @@ const SmartScheduling = () => {
                   type="number"
                   min="0"
                   max="480"
-                  value={schedulingConfig.break_time}
-                  onChange={(e) => handleConfigChange('break_time', parseInt(e.target.value))}
+                  value={schedulingConfig.break_time || 60}
+                  onChange={(e) => handleConfigChange('break_time', parseInt(e.target.value) || 60)}
                 />
                 <small>每日休息時間</small>
               </div>
@@ -350,6 +373,110 @@ const SmartScheduling = () => {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 多日排程標籤頁 */}
+      {activeTab === 'multi-day' && scheduleData && scheduleData.multi_day_schedule && (
+        <div className="multi-day-panel">
+          <h3>📅 多日生產排程</h3>
+          <div className="multi-day-grid">
+            {scheduleData.multi_day_schedule.map((dayPlan, index) => (
+              <div key={index} className="day-plan-card">
+                <div className="day-header">
+                  <h4>{dayPlan.date}</h4>
+                  <div className="day-summary">
+                    <span className="bottles">{dayPlan.planned_production.reduce((sum, item) => sum + item.quantity, 0)}瓶</span>
+                    <span className="capacity">剩餘產能: {dayPlan.remaining_capacity}瓶</span>
+                  </div>
+                </div>
+                
+                {dayPlan.planned_production.length > 0 ? (
+                  <div className="production-list">
+                    {dayPlan.planned_production.map((item, itemIndex) => (
+                      <div key={itemIndex} className="production-item">
+                        <div className="item-header">
+                          <span className="product-name">{item.product_name}</span>
+                          <span className="quantity">{item.quantity}瓶</span>
+                        </div>
+                        <div className="item-details">
+                          <small>{item.reason}</small>
+                          <small>⏱️ {item.estimated_time}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="no-production">
+                    <p>當日無生產計劃</p>
+                  </div>
+                )}
+                
+                {dayPlan.deferred_orders && dayPlan.deferred_orders.length > 0 && (
+                  <div className="deferred-orders">
+                    <h5>⏰ 遞延訂單 ({dayPlan.deferred_orders.length}筆)</h5>
+                    {dayPlan.deferred_orders.map((order, orderIndex) => (
+                      <div key={orderIndex} className="deferred-item">
+                        <span>{order.product_name} - {order.quantity}瓶</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 遞延訂單標籤頁 */}
+      {activeTab === 'deferred' && scheduleData && scheduleData.deferred_orders && (
+        <div className="deferred-panel">
+          <h3>⏰ 遞延訂單總覽</h3>
+          {scheduleData.deferred_orders.length > 0 ? (
+            <div className="deferred-list">
+              {scheduleData.deferred_orders.map((deferredDay, index) => (
+                <div key={index} className="deferred-day-card">
+                  <div className="deferred-header">
+                    <h4>{deferredDay.date}</h4>
+                    <div className="deferred-summary">
+                      <span className="count">{deferredDay.deferred_count}筆訂單</span>
+                      <span className="quantity">{deferredDay.total_deferred_quantity}瓶</span>
+                    </div>
+                  </div>
+                  
+                  <div className="deferred-orders-list">
+                    {deferredDay.deferred_orders.map((order, orderIndex) => (
+                      <div key={orderIndex} className="deferred-order-item">
+                        <div className="order-header">
+                          <span className="product-name">{order.product_name}</span>
+                          <span className="quantity">{order.quantity}瓶</span>
+                          <span className="priority">優先級: {order.priority}</span>
+                        </div>
+                        <div className="order-details">
+                          <p>{order.reason}</p>
+                          {order.orders && order.orders.length > 0 && (
+                            <div className="related-orders">
+                              <small>相關訂單:</small>
+                              {order.orders.map((relatedOrder, relatedIndex) => (
+                                <small key={relatedIndex} className="related-order">
+                                  {relatedOrder.customer_name} - {relatedOrder.quantity}瓶
+                                </small>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-deferred">
+              <p>🎉 目前沒有遞延訂單！</p>
+              <p>所有訂單都能按時完成</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -752,6 +879,256 @@ const SmartScheduling = () => {
             flex: 1;
             min-width: 120px;
           }
+        }
+
+        /* 多日排程樣式 */
+        .multi-day-panel {
+          background: white;
+          padding: 30px;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .multi-day-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+          gap: 20px;
+          margin-top: 20px;
+        }
+
+        .day-plan-card {
+          border: 1px solid #e0e0e0;
+          border-radius: 8px;
+          padding: 20px;
+          background: #fafafa;
+        }
+
+        .day-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+          border-bottom: 2px solid #4facfe;
+        }
+
+        .day-header h4 {
+          margin: 0;
+          color: #333;
+        }
+
+        .day-summary {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+        }
+
+        .day-summary .bottles {
+          font-weight: bold;
+          color: #4facfe;
+          font-size: 1.2em;
+        }
+
+        .day-summary .capacity {
+          font-size: 0.9em;
+          color: #666;
+        }
+
+        .production-list {
+          margin-bottom: 15px;
+        }
+
+        .production-item {
+          background: white;
+          padding: 12px;
+          margin-bottom: 8px;
+          border-radius: 6px;
+          border-left: 4px solid #4facfe;
+        }
+
+        .item-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 5px;
+        }
+
+        .product-name {
+          font-weight: bold;
+          color: #333;
+        }
+
+        .quantity {
+          background: #4facfe;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 0.9em;
+        }
+
+        .item-details {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.9em;
+          color: #666;
+        }
+
+        .no-production {
+          text-align: center;
+          color: #999;
+          font-style: italic;
+          padding: 20px;
+        }
+
+        .deferred-orders {
+          background: #fff3cd;
+          border: 1px solid #ffeaa7;
+          border-radius: 6px;
+          padding: 12px;
+        }
+
+        .deferred-orders h5 {
+          margin: 0 0 10px 0;
+          color: #856404;
+        }
+
+        .deferred-item {
+          background: white;
+          padding: 8px;
+          margin-bottom: 5px;
+          border-radius: 4px;
+          font-size: 0.9em;
+          color: #856404;
+        }
+
+        /* 遞延訂單樣式 */
+        .deferred-panel {
+          background: white;
+          padding: 30px;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .deferred-list {
+          margin-top: 20px;
+        }
+
+        .deferred-day-card {
+          border: 1px solid #ffc107;
+          border-radius: 8px;
+          padding: 20px;
+          margin-bottom: 20px;
+          background: #fffbf0;
+        }
+
+        .deferred-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+          padding-bottom: 10px;
+          border-bottom: 2px solid #ffc107;
+        }
+
+        .deferred-header h4 {
+          margin: 0;
+          color: #856404;
+        }
+
+        .deferred-summary {
+          display: flex;
+          gap: 15px;
+        }
+
+        .deferred-summary .count {
+          background: #ffc107;
+          color: #856404;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-weight: bold;
+        }
+
+        .deferred-summary .quantity {
+          background: #dc3545;
+          color: white;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-weight: bold;
+        }
+
+        .deferred-orders-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .deferred-order-item {
+          background: white;
+          border: 1px solid #ffc107;
+          border-radius: 6px;
+          padding: 15px;
+        }
+
+        .order-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .order-header .product-name {
+          font-weight: bold;
+          color: #333;
+        }
+
+        .order-header .quantity {
+          background: #dc3545;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 0.9em;
+        }
+
+        .order-header .priority {
+          background: #6c757d;
+          color: white;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 0.8em;
+        }
+
+        .order-details p {
+          margin: 5px 0;
+          color: #856404;
+          font-size: 0.9em;
+        }
+
+        .related-orders {
+          margin-top: 8px;
+        }
+
+        .related-orders small {
+          display: block;
+          margin: 2px 0;
+          color: #666;
+        }
+
+        .related-order {
+          background: #f8f9fa;
+          padding: 2px 6px;
+          border-radius: 4px;
+          margin: 2px 0;
+        }
+
+        .no-deferred {
+          text-align: center;
+          padding: 40px;
+          color: #28a745;
+        }
+
+        .no-deferred p {
+          margin: 10px 0;
+          font-size: 1.1em;
         }
       `}</style>
     </div>

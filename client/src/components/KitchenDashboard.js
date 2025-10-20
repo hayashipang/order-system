@@ -412,23 +412,25 @@ const KitchenDashboard = () => {
           >
             🏪 現場訂單
           </button>
-          <button
-            onClick={() => setActiveTab('scheduling')}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: activeTab === 'scheduling' ? '#9b59b6' : '#f8f9fa',
-              color: activeTab === 'scheduling' ? 'white' : '#6c757d',
-              border: 'none',
-              borderBottom: activeTab === 'scheduling' ? '3px solid #8e44ad' : '3px solid transparent',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              borderRadius: '8px 8px 0 0',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            🧠 排單系統
-          </button>
+          {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (
+            <button
+              onClick={() => setActiveTab('scheduling')}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: activeTab === 'scheduling' ? '#9b59b6' : '#f8f9fa',
+                color: activeTab === 'scheduling' ? 'white' : '#6c757d',
+                border: 'none',
+                borderBottom: activeTab === 'scheduling' ? '3px solid #8e44ad' : '3px solid transparent',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                borderRadius: '8px 8px 0 0',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              🧠 排單系統
+            </button>
+          )}
         </div>
         
         

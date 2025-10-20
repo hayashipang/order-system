@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import config from '../config';
 import SmartScheduling from './SmartScheduling';
+import ParameterTestModal from './ParameterTestModal';
 
 const AdminPanel = ({ user }) => {
   const [activeTab, setActiveTab] = useState(user?.role === 'kitchen' ? 'shipping-management' : 'new-order');
@@ -12,6 +13,9 @@ const AdminPanel = ({ user }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // 參數測試狀態
+  const [isParameterTestModalOpen, setIsParameterTestModalOpen] = useState(false);
 
   // 新增訂單表單狀態
   const [newOrder, setNewOrder] = useState({
@@ -4046,18 +4050,33 @@ const AdminPanel = ({ user }) => {
           >
             📦 庫存管理
           </button>
+          {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (
+            <button 
+              className={`nav-button ${activeTab === 'smart-scheduling' ? 'active' : ''}`}
+              onClick={() => setActiveTab('smart-scheduling')}
+              style={{ 
+                backgroundColor: activeTab === 'smart-scheduling' ? '#4facfe' : '#00f2fe', 
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              🏭 智能排程
+            </button>
+          )}
           <button 
-            className={`nav-button ${activeTab === 'smart-scheduling' ? 'active' : ''}`}
-            onClick={() => setActiveTab('smart-scheduling')}
+            className={`nav-button ${activeTab === 'parameter-test' ? 'active' : ''}`}
+            onClick={() => setActiveTab('parameter-test')}
             style={{ 
-              backgroundColor: activeTab === 'smart-scheduling' ? '#4facfe' : '#00f2fe', 
+              backgroundColor: activeTab === 'parameter-test' ? '#4facfe' : '#00f2fe', 
               color: 'white',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
           >
-            🏭 智能排程
+            🧪 參數測試
           </button>
           <button 
             className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}
@@ -4095,11 +4114,145 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
       {activeTab === 'inventory-management' && renderInventoryManagement()}
-      {activeTab === 'smart-scheduling' && <SmartScheduling />}
+      {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (activeTab === 'smart-scheduling' && <SmartScheduling />)}
+      {activeTab === 'parameter-test' && (
+        <div style={{ padding: '20px' }}>
+          <div style={{ 
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            padding: '20px',
+            borderRadius: '10px',
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            <h2 style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🧪 智能參數測試與優化</h2>
+            <p style={{ margin: '0', opacity: 0.9 }}>
+              使用AI演算法優化排程參數，提升系統效率
+            </p>
+          </div>
+
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+            gap: '20px',
+            marginBottom: '20px'
+          }}>
+            {/* 功能介紹卡片 */}
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '10px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+              border: '1px solid #e0e0e0'
+            }}>
+              <h3 style={{ color: '#333', marginBottom: '15px' }}>🎯 測試功能</h3>
+              <ul style={{ color: '#666', lineHeight: '1.6' }}>
+                <li>多種AI優化演算法</li>
+                <li>參數敏感性分析</li>
+                <li>績效指標評估</li>
+                <li>智能參數推薦</li>
+              </ul>
+            </div>
+
+            {/* 演算法介紹卡片 */}
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '10px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+              border: '1px solid #e0e0e0'
+            }}>
+              <h3 style={{ color: '#333', marginBottom: '15px' }}>🤖 AI演算法</h3>
+              <ul style={{ color: '#666', lineHeight: '1.6' }}>
+                <li><strong>遺傳算法</strong> - 模擬生物進化</li>
+                <li><strong>粒子群優化</strong> - 快速收斂</li>
+                <li><strong>模擬退火</strong> - 避免局部最優</li>
+                <li><strong>強化學習</strong> - 動態學習</li>
+              </ul>
+            </div>
+
+            {/* 優化目標卡片 */}
+            <div style={{
+              background: 'white',
+              padding: '20px',
+              borderRadius: '10px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+              border: '1px solid #e0e0e0'
+            }}>
+              <h3 style={{ color: '#333', marginBottom: '15px' }}>📊 優化目標</h3>
+              <ul style={{ color: '#666', lineHeight: '1.6' }}>
+                <li>提升訂單完成率</li>
+                <li>優化產能利用率</li>
+                <li>減少加班時數</li>
+                <li>提高客戶滿意度</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* 操作按鈕 */}
+          <div style={{ textAlign: 'center' }}>
+            <button
+              onClick={() => setIsParameterTestModalOpen(true)}
+              style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                border: 'none',
+                padding: '15px 30px',
+                borderRadius: '25px',
+                fontSize: '16px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.transform = 'translateY(-2px)';
+                e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+              }}
+              onMouseOut={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
+              }}
+            >
+              🚀 開始參數測試
+            </button>
+          </div>
+
+          {/* 使用說明 */}
+          <div style={{
+            background: '#f8f9fa',
+            padding: '20px',
+            borderRadius: '10px',
+            marginTop: '20px',
+            border: '1px solid #e9ecef'
+          }}>
+            <h3 style={{ color: '#333', marginBottom: '15px' }}>📖 使用說明</h3>
+            <ol style={{ color: '#666', lineHeight: '1.8' }}>
+              <li><strong>設定測試參數</strong> - 調整日產能、人力數量等基礎參數</li>
+              <li><strong>選擇策略參數</strong> - 設定未完成訂單處理方式和新訂單插入策略</li>
+              <li><strong>選擇AI演算法</strong> - 根據需求選擇適合的優化演算法</li>
+              <li><strong>執行測試</strong> - 系統會生成測試訂單並執行優化</li>
+              <li><strong>查看結果</strong> - 分析推薦參數和預期改善效果</li>
+              <li><strong>應用參數</strong> - 一鍵應用推薦的參數到實際系統</li>
+            </ol>
+          </div>
+        </div>
+      )}
       {activeTab === 'shipping-management' && renderShippingManagement()}
       {activeTab === 'edit-order' && renderEditOrderForm()}
+      
+      {/* 參數測試彈窗 */}
+      <ParameterTestModal
+        isOpen={isParameterTestModalOpen}
+        onClose={() => setIsParameterTestModalOpen(false)}
+        onTestComplete={(results) => {
+          console.log('參數測試完成:', results);
+          setSuccess('參數測試完成！請查看推薦結果。');
+        }}
+      />
     </div>
   );
 };
+
 
 export default AdminPanel;

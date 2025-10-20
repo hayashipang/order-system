@@ -661,31 +661,22 @@ app.delete('/api/inventory/transactions/reset', checkDatabaseReady, (req, res) =
 });
 
 // 取得廚房製作清單 (按產品統計數量)
-app.get('/api/kitchen/production/:date', checkDatabaseReady, (req, res) => {
+app.get('/api/kitchen/production/:date', (req, res) => {
   const { date } = req.params;
   
   try {
     console.log('請求製作清單日期:', date);
-    const allOrders = Array.isArray(db.orders) ? db.orders : [];
-    const allOrderItems = Array.isArray(db.order_items) ? db.order_items : [];
-    console.log('所有訂單數:', allOrders.length);
-    console.log('所有訂單項目數:', allOrderItems.length);
+    console.log('所有訂單:', db.orders);
+    console.log('所有訂單項目:', db.order_items);
     
     // 取得指定日期的訂單（支援多種日期格式），排除現場訂單
-    const orders = allOrders.filter(order => {
-      if (!order || !order.order_date) return false;
-      let orderDateStr;
-      let requestDate;
-      try {
-        orderDateStr = new Date(order.order_date).toISOString().split('T')[0];
-        requestDate = new Date(date).toISOString().split('T')[0];
-      } catch (e) {
-        return false;
-      }
+    const orders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+      const requestDate = new Date(date).toISOString().split('T')[0];
       const directMatch = order.order_date === date;
-      const dateMatch = orderDateStr === requestDate;
+      const dateMatch = orderDate === requestDate;
       const isNotWalkin = order.order_type !== 'walk-in'; // 排除現場訂單
-      // 簡化日誌避免過多輸出
+      console.log(`訂單 ${order.id}: order_date=${order.order_date}, 直接匹配=${directMatch}, 日期匹配=${dateMatch}, 非現場訂單=${isNotWalkin}`);
       return (directMatch || dateMatch) && isNotWalkin;
     });
     
@@ -693,7 +684,7 @@ app.get('/api/kitchen/production/:date', checkDatabaseReady, (req, res) => {
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
-    const orderItems = allOrderItems.filter(item => orderIds.includes(item.order_id));
+    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
     console.log('訂單項目:', orderItems);
     
     // 按產品名稱和單價分組統計
@@ -731,11 +722,9 @@ app.get('/api/kitchen/production/:date', checkDatabaseReady, (req, res) => {
     });
     
     const result = Object.values(productStats).sort((a, b) => a.product_name.localeCompare(b.product_name));
-    return res.json(result);
+    res.json(result);
   } catch (error) {
-    console.error('Kitchen production 查詢錯誤:', error);
-    // 發生例外時回傳空陣列避免前端崩潰
-    return res.status(200).json([]);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -749,33 +738,25 @@ app.get('/api/orders', checkDatabaseReady, (req, res) => {
 });
 
 // 取得客戶訂單清單 (按客戶分組)
-app.get('/api/orders/customers/:date', checkDatabaseReady, (req, res) => {
+app.get('/api/orders/customers/:date', (req, res) => {
   const { date } = req.params;
   
   try {
     console.log('請求客戶訂單日期:', date);
-    const allOrders = Array.isArray(db.orders) ? db.orders : [];
-    const allCustomers = Array.isArray(db.customers) ? db.customers : [];
-    const allItems = Array.isArray(db.order_items) ? db.order_items : [];
+    console.log('所有訂單:', db.orders);
     
     // 取得指定日期的訂單（支援多種日期格式）
-    const orders = allOrders.filter(order => {
-      if (!order || !order.order_date) return false;
-      let orderDateStr, requestDate;
-      try {
-        orderDateStr = new Date(order.order_date).toISOString().split('T')[0];
-        requestDate = new Date(date).toISOString().split('T')[0];
-      } catch (e) {
-        return false;
-      }
-      return orderDateStr === requestDate || order.order_date === date;
+    const orders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+      const requestDate = new Date(date).toISOString().split('T')[0];
+      return orderDate === requestDate || order.order_date === date;
     });
     
     console.log('匹配的訂單:', orders);
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
-    const orderItems = allItems.filter(item => orderIds.includes(item.order_id));
+    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
     console.log('訂單項目:', orderItems);
     
     // 按客戶和訂單分組並計算金額
@@ -783,7 +764,7 @@ app.get('/api/orders/customers/:date', checkDatabaseReady, (req, res) => {
     let totalDailyAmount = 0;
     
     orders.forEach(order => {
-      const customer = allCustomers.find(c => c.id === order.customer_id);
+      const customer = db.customers.find(c => c.id === order.customer_id);
       if (!customer) return;
       
       const customerId = customer.id;
@@ -857,13 +838,12 @@ app.get('/api/orders/customers/:date', checkDatabaseReady, (req, res) => {
       // 客戶付運費給快遞公司，不計入我們的收入
     });
     
-    return res.json({
+    res.json({
       orders: Object.values(groupedOrders),
       totalAmount: totalDailyAmount
     });
   } catch (error) {
-    console.error('取得客戶訂單清單失敗:', error);
-    return res.status(200).json({ orders: [], totalAmount: 0 });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -1998,23 +1978,15 @@ app.get('/api/kitchen/walkin-orders', (req, res) => {
 });
 
 // 取得現場訂單列表 (按訂單顯示，用於廚房卡片式顯示)
-app.get('/api/kitchen/walkin-orders-list', checkDatabaseReady, (req, res) => {
+app.get('/api/kitchen/walkin-orders-list', (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     console.log('請求現場訂單列表日期:', today);
     
     // 取得當天的現場銷售訂單，按時間倒序排列
-    const allOrders = Array.isArray(db.orders) ? db.orders : [];
-    const allItems = Array.isArray(db.order_items) ? db.order_items : [];
-    const walkinOrders = allOrders
+    const walkinOrders = db.orders
       .filter(order => {
-        if (!order || !order.order_date) return false;
-        let orderDate;
-        try {
-          orderDate = new Date(order.order_date).toISOString().split('T')[0];
-        } catch (e) {
-          return false;
-        }
+        const orderDate = new Date(order.order_date).toISOString().split('T')[0];
         return orderDate === today && order.order_type === 'walk-in';
       })
       .sort((a, b) => {
@@ -2029,7 +2001,7 @@ app.get('/api/kitchen/walkin-orders-list', checkDatabaseReady, (req, res) => {
     
     // 為每個訂單添加訂單項目資訊
     const result = walkinOrders.map(order => {
-      const orderItems = allItems.filter(item => item.order_id === order.id);
+      const orderItems = db.order_items.filter(item => item.order_id === order.id);
       
       return {
         id: order.id,
@@ -2044,11 +2016,10 @@ app.get('/api/kitchen/walkin-orders-list', checkDatabaseReady, (req, res) => {
     });
     
     console.log('現場訂單列表結果:', result);
-    return res.json(result);
+    res.json(result);
   } catch (error) {
     console.error('取得現場訂單列表失敗:', error);
-    // 回傳空陣列避免前端中斷
-    return res.status(200).json([]);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -2274,15 +2245,12 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
 // 智能排程生成函數
 function generateSmartSchedule(targetDate, config) {
   try {
-    // 分析多日訂單需求（包括前一日、當日和未來幾日），讓遞延能帶入隔日
+    // 分析多日訂單需求（包括當日和未來幾日）
     const maxDays = config.max_rolling_days || 3;
-    const start = new Date(targetDate);
-    start.setDate(start.getDate() - 1);
-    const startDateForRolling = start.toISOString().split('T')[0];
-    const multiDayOrderDemandAll = analyzeMultiDayOrderDemand(startDateForRolling, maxDays + 1);
+    const multiDayOrderDemand = analyzeMultiDayOrderDemand(targetDate, maxDays);
     
     // 如果沒有任何訂單需求，不生成任何排程
-    if (multiDayOrderDemandAll.length === 0) {
+    if (multiDayOrderDemand.length === 0) {
       return {
         planned_production: [],
         time_schedule: [],
@@ -2307,10 +2275,8 @@ function generateSmartSchedule(targetDate, config) {
     // 分析銷售趨勢
     const salesTrend = analyzeSalesTrend();
     
-    // 生成多日生產計劃（含前一日）
-    const multiDayPlanAll = generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemandAll, config);
-    // 過濾出從 targetDate 起的區間，供前端顯示
-    const multiDayPlan = multiDayPlanAll.filter(day => day.date >= targetDate);
+    // 生成多日生產計劃
+    const multiDayPlan = generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemand, config);
     
     // 獲取當日計劃
     const todayPlan = multiDayPlan.find(day => day.date === targetDate) || { 
@@ -2483,12 +2449,13 @@ function analyzeMultiDayOrderDemand(startDate, maxDays) {
     const dateStr = currentDate.toISOString().split('T')[0];
     
     const dailyDemand = analyzeDailyOrderDemand(dateStr);
-    // 即使當日無新訂單，也保留空日，讓遞延可滾入顯示
-    multiDayDemand.push({
-      date: dateStr,
-      demand: dailyDemand,
-      total_bottles: dailyDemand.reduce((sum, item) => sum + item.daily_demand, 0)
-    });
+    if (dailyDemand.length > 0) {
+      multiDayDemand.push({
+        date: dateStr,
+        demand: dailyDemand,
+        total_bottles: dailyDemand.reduce((sum, item) => sum + item.daily_demand, 0)
+      });
+    }
   }
   
   console.log('多日訂單需求:', multiDayDemand);
@@ -2567,10 +2534,7 @@ function generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand,
 function generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemand, config) {
   const multiDayPlan = [];
   let currentInventory = [...inventoryAnalysis]; // 複製當前庫存狀態
-
-  // 累計遞延需求，帶入下一天（key: product_id, value: { quantity, meta }）
-  const carryOverMap = new Map();
-
+  
   // 為每一天生成生產計劃
   multiDayOrderDemand.forEach(dayData => {
     const dayPlan = {
@@ -2582,38 +2546,9 @@ function generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayO
     };
     
     let remainingCapacity = config.daily_capacity;
-
-    // 構建「當日有效需求」= 當日訂單需求 + 來自前一日的遞延需求
-    const combinedDemand = [];
-
-    // 先推入前一日遞延（若有）
-    if (carryOverMap.size > 0) {
-      carryOverMap.forEach((value, productId) => {
-        combinedDemand.push({
-          product_id: productId,
-          product_name: value.product_name,
-          daily_demand: value.quantity,
-          priority: value.priority ?? 999, // 遞延若無優先設定，給較後順位
-          orders: value.orders || []
-        });
-      });
-    }
-
-    // 再推入當日新訂單需求
-    dayData.demand.forEach(d => combinedDemand.push(d));
-
-    // 若完全沒有需求（沒有新訂單且沒有遞延），也要生成空計劃物件，避免前端顯示空白不明
-    if (combinedDemand.length === 0) {
-      dayPlan.remaining_capacity = remainingCapacity;
-      dayPlan.time_schedule = [];
-      multiDayPlan.push(dayPlan);
-      // 清空上一日遞延（已消耗於 combinedDemand 的構建邏輯，此處確保乾淨）
-      carryOverMap.clear();
-      return;
-    }
-
-    // 處理當日有效需求
-    combinedDemand.forEach(demandItem => {
+    
+    // 處理當日訂單需求
+    dayData.demand.forEach(demandItem => {
       if (remainingCapacity <= 0) {
         // 產能不足，記錄為遞延訂單
         dayPlan.deferred_orders.push({
@@ -2706,20 +2641,7 @@ function generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayO
     
     dayPlan.remaining_capacity = remainingCapacity;
     dayPlan.time_schedule = calculateTimeSchedule(dayPlan.planned_production, config);
-
-    // 生成下一日要帶入的遞延需求（彙總同品項）
-    carryOverMap.clear();
-    dayPlan.deferred_orders.forEach(doItem => {
-      const existing = carryOverMap.get(doItem.product_id);
-      const aggregatedQuantity = (existing?.quantity || 0) + doItem.quantity;
-      carryOverMap.set(doItem.product_id, {
-        product_name: doItem.product_name,
-        quantity: aggregatedQuantity,
-        priority: doItem.priority,
-        orders: doItem.orders
-      });
-    });
-
+    
     multiDayPlan.push(dayPlan);
   });
   

@@ -1,8 +1,7 @@
 import axios from 'axios';
 
-// API 基礎 URL - 地端開發環境
-const API_BASE_URL = 'http://localhost:3001';
-console.log('🔧 POS API配置:', API_BASE_URL);
+// API 基礎 URL - 雲端生產環境
+const API_BASE_URL = 'https://order-system-production-6ef7.up.railway.app';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

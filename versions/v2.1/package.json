@@ -1,0 +1,72 @@
+{
+  "name": "order-system",
+  "version": "1.0.0",
+  "description": "訂單管理系統 - 專為蔬果飲品店設計",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "dev:client": "cd client && npm start",
+    "dev:pos": "cd pos-system && npm start",
+    "dev:server": "nodemon server.js",
+    "dev:full": "echo '請分別在三個終端中執行: npm run dev:server, npm run dev:client, npm run dev:pos'",
+    "build": "npm run build:client && npm run build:pos",
+    "build:client": "cd client && npm install && npm run build",
+    "build:pos": "cd pos-system && npm install && npm run build",
+    "build:prod": "NODE_ENV=production npm run build",
+    "install-all": "npm run install-client && npm run install-pos",
+    "install-client": "cd client && npm install",
+    "install-pos": "cd pos-system && npm install",
+    "heroku-postbuild": "npm run install-all && npm run build",
+    "vercel-build": "npm run install-all && npm run build",
+    "postinstall": "npm run install-all",
+    "railway-build": "npm run install-all && npm run build",
+    "test:local": "npm run build && npm start",
+    "clean": "rm -rf client/build && rm -rf pos-system/build && rm -rf node_modules && rm -rf client/node_modules && rm -rf pos-system/node_modules",
+    "deploy": "./scripts/auto-deploy.sh",
+    "deploy:quick": "./scripts/quick-deploy.sh",
+    "deploy:full": "./scripts/deploy-with-backup.sh",
+    "backup": "./scripts/backup-cloud-data.sh",
+    "restore": "./scripts/restore-cloud-data.sh",
+    "setup:local": "./scripts/setup-local-dev.sh",
+    "config:local": "./scripts/switch-env.sh local",
+    "config:production": "./scripts/switch-env.sh production",
+    "version:create": "./scripts/version-manager.sh create",
+    "version:switch": "./scripts/version-manager.sh switch",
+    "version:list": "./scripts/version-manager.sh list",
+    "version:rollback": "./scripts/version-manager.sh rollback",
+    "version:current": "./scripts/version-manager.sh current",
+    "version:backup": "./scripts/version-manager.sh backup"
+  },
+  "keywords": [
+    "order-management",
+    "react",
+    "nodejs",
+    "express",
+    "json-storage",
+    "restaurant",
+    "kitchen"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/james/order-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/james/order-system/issues"
+  },
+  "homepage": "https://order-system.vercel.app"
+}

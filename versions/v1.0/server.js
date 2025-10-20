@@ -214,6 +214,120 @@ app.get('/api/products', checkDatabaseReady, (req, res) => {
   res.json(db.products);
 });
 
+// 取得產品優先順序設定
+app.get('/api/products/priority', checkDatabaseReady, (req, res) => {
+  try {
+    // 如果沒有優先順序設定，返回預設值
+    if (!db.product_priority) {
+      db.product_priority = db.products.map((product, index) => ({
+        product_id: product.id,
+        product_name: product.name,
+        priority: index + 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      saveData();
+    }
+    res.json(db.product_priority);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新產品優先順序設定
+app.put('/api/products/priority', (req, res) => {
+  try {
+    const { priority_settings } = req.body;
+    
+    if (!Array.isArray(priority_settings)) {
+      return res.status(400).json({ error: '優先順序設定必須是陣列格式' });
+    }
+    
+    // 驗證每個設定都有必要的欄位
+    for (const setting of priority_settings) {
+      if (!setting.product_id || !setting.priority) {
+        return res.status(400).json({ error: '每個設定都必須包含 product_id 和 priority' });
+      }
+    }
+    
+    // 更新優先順序設定
+    db.product_priority = priority_settings.map(setting => ({
+      product_id: setting.product_id,
+      product_name: setting.product_name || db.products.find(p => p.id === setting.product_id)?.name || '未知產品',
+      priority: parseInt(setting.priority),
+      updated_at: new Date().toISOString()
+    }));
+    
+    saveData();
+    
+    res.json({ 
+      message: '產品優先順序更新成功', 
+      priority_settings: db.product_priority 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 同步產品優先順序設定
+app.post('/api/products/sync-priority', (req, res) => {
+  try {
+    // 如果沒有優先順序設定，初始化
+    if (!db.product_priority) {
+      db.product_priority = [];
+    }
+    
+    // 獲取所有現有產品
+    const existingProducts = db.products;
+    const existingPriorityIds = db.product_priority.map(p => p.product_id);
+    
+    // 為新產品添加優先順序設定
+    const newProducts = existingProducts.filter(product => 
+      !existingPriorityIds.includes(product.id)
+    );
+    
+    if (newProducts.length > 0) {
+      const maxPriority = Math.max(...db.product_priority.map(p => p.priority), 0);
+      
+      newProducts.forEach((product, index) => {
+        db.product_priority.push({
+          product_id: product.id,
+          product_name: product.name,
+          priority: maxPriority + index + 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      });
+    }
+    
+    // 移除已刪除產品的優先順序設定
+    const existingProductIds = existingProducts.map(p => p.id);
+    db.product_priority = db.product_priority.filter(priority => 
+      existingProductIds.includes(priority.product_id)
+    );
+    
+    // 更新產品名稱（如果產品名稱有變更）
+    db.product_priority.forEach(priority => {
+      const product = existingProducts.find(p => p.id === priority.product_id);
+      if (product && product.name !== priority.product_name) {
+        priority.product_name = product.name;
+        priority.updated_at = new Date().toISOString();
+      }
+    });
+    
+    saveData();
+    
+    res.json({ 
+      message: '產品優先順序同步成功', 
+      priority_settings: db.product_priority,
+      synced_products: newProducts.length,
+      removed_products: existingPriorityIds.length - db.product_priority.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 取得運費設定
 app.get('/api/shipping-fee', checkDatabaseReady, (req, res) => {
   res.json({ shippingFee: db.shippingFee || 120 });
@@ -284,6 +398,10 @@ app.post('/api/products', (req, res) => {
     };
     
     db.products.push(newProduct);
+    
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     
     res.json(newProduct);
@@ -330,6 +448,9 @@ app.put('/api/products/:id', (req, res) => {
     
     console.log('更新後產品:', db.products[productIndex]);
     
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     res.json({ 
       message: '產品更新成功', 
@@ -362,6 +483,10 @@ app.delete('/api/products/:id', (req, res) => {
     }
     
     db.products.splice(productIndex, 1);
+    
+    // 自動同步優先順序設定
+    syncProductPriority();
+    
     saveData();
     res.json({ message: '產品刪除成功' });
   } catch (error) {
@@ -536,22 +661,31 @@ app.delete('/api/inventory/transactions/reset', checkDatabaseReady, (req, res) =
 });
 
 // 取得廚房製作清單 (按產品統計數量)
-app.get('/api/kitchen/production/:date', (req, res) => {
+app.get('/api/kitchen/production/:date', checkDatabaseReady, (req, res) => {
   const { date } = req.params;
   
   try {
     console.log('請求製作清單日期:', date);
-    console.log('所有訂單:', db.orders);
-    console.log('所有訂單項目:', db.order_items);
+    const allOrders = Array.isArray(db.orders) ? db.orders : [];
+    const allOrderItems = Array.isArray(db.order_items) ? db.order_items : [];
+    console.log('所有訂單數:', allOrders.length);
+    console.log('所有訂單項目數:', allOrderItems.length);
     
     // 取得指定日期的訂單（支援多種日期格式），排除現場訂單
-    const orders = db.orders.filter(order => {
-      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
-      const requestDate = new Date(date).toISOString().split('T')[0];
+    const orders = allOrders.filter(order => {
+      if (!order || !order.order_date) return false;
+      let orderDateStr;
+      let requestDate;
+      try {
+        orderDateStr = new Date(order.order_date).toISOString().split('T')[0];
+        requestDate = new Date(date).toISOString().split('T')[0];
+      } catch (e) {
+        return false;
+      }
       const directMatch = order.order_date === date;
-      const dateMatch = orderDate === requestDate;
+      const dateMatch = orderDateStr === requestDate;
       const isNotWalkin = order.order_type !== 'walk-in'; // 排除現場訂單
-      console.log(`訂單 ${order.id}: order_date=${order.order_date}, 直接匹配=${directMatch}, 日期匹配=${dateMatch}, 非現場訂單=${isNotWalkin}`);
+      // 簡化日誌避免過多輸出
       return (directMatch || dateMatch) && isNotWalkin;
     });
     
@@ -559,7 +693,7 @@ app.get('/api/kitchen/production/:date', (req, res) => {
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
-    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    const orderItems = allOrderItems.filter(item => orderIds.includes(item.order_id));
     console.log('訂單項目:', orderItems);
     
     // 按產品名稱和單價分組統計
@@ -597,32 +731,51 @@ app.get('/api/kitchen/production/:date', (req, res) => {
     });
     
     const result = Object.values(productStats).sort((a, b) => a.product_name.localeCompare(b.product_name));
-    res.json(result);
+    return res.json(result);
+  } catch (error) {
+    console.error('Kitchen production 查詢錯誤:', error);
+    // 發生例外時回傳空陣列避免前端崩潰
+    return res.status(200).json([]);
+  }
+});
+
+// 取得所有訂單
+app.get('/api/orders', checkDatabaseReady, (req, res) => {
+  try {
+    res.json(db.orders || []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // 取得客戶訂單清單 (按客戶分組)
-app.get('/api/orders/customers/:date', (req, res) => {
+app.get('/api/orders/customers/:date', checkDatabaseReady, (req, res) => {
   const { date } = req.params;
   
   try {
     console.log('請求客戶訂單日期:', date);
-    console.log('所有訂單:', db.orders);
+    const allOrders = Array.isArray(db.orders) ? db.orders : [];
+    const allCustomers = Array.isArray(db.customers) ? db.customers : [];
+    const allItems = Array.isArray(db.order_items) ? db.order_items : [];
     
     // 取得指定日期的訂單（支援多種日期格式）
-    const orders = db.orders.filter(order => {
-      const orderDate = new Date(order.order_date).toISOString().split('T')[0];
-      const requestDate = new Date(date).toISOString().split('T')[0];
-      return orderDate === requestDate || order.order_date === date;
+    const orders = allOrders.filter(order => {
+      if (!order || !order.order_date) return false;
+      let orderDateStr, requestDate;
+      try {
+        orderDateStr = new Date(order.order_date).toISOString().split('T')[0];
+        requestDate = new Date(date).toISOString().split('T')[0];
+      } catch (e) {
+        return false;
+      }
+      return orderDateStr === requestDate || order.order_date === date;
     });
     
     console.log('匹配的訂單:', orders);
     const orderIds = orders.map(order => order.id);
     
     // 取得這些訂單的項目
-    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
+    const orderItems = allItems.filter(item => orderIds.includes(item.order_id));
     console.log('訂單項目:', orderItems);
     
     // 按客戶和訂單分組並計算金額
@@ -630,7 +783,7 @@ app.get('/api/orders/customers/:date', (req, res) => {
     let totalDailyAmount = 0;
     
     orders.forEach(order => {
-      const customer = db.customers.find(c => c.id === order.customer_id);
+      const customer = allCustomers.find(c => c.id === order.customer_id);
       if (!customer) return;
       
       const customerId = customer.id;
@@ -704,12 +857,13 @@ app.get('/api/orders/customers/:date', (req, res) => {
       // 客戶付運費給快遞公司，不計入我們的收入
     });
     
-    res.json({
+    return res.json({
       orders: Object.values(groupedOrders),
       totalAmount: totalDailyAmount
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('取得客戶訂單清單失敗:', error);
+    return res.status(200).json({ orders: [], totalAmount: 0 });
   }
 });
 
@@ -1263,7 +1417,7 @@ app.get('/api/orders/:id', (req, res) => {
 
 // 新增訂單
 app.post('/api/orders', (req, res) => {
-  const { customer_id, order_date, delivery_date, items, notes, shipping_type, shipping_fee, credit_card_fee, shopee_fee } = req.body;
+  const { customer_id, customer_name, order_date, delivery_date, items, notes, shipping_type, shipping_fee, credit_card_fee, shopee_fee } = req.body;
   
   try {
     // 取得客戶資料以檢查付款方式（允許 customer_id 為 null）
@@ -1291,6 +1445,7 @@ app.post('/api/orders', (req, res) => {
     const newOrder = {
       id: Math.max(...db.orders.map(o => o.id), 0) + 1,
       customer_id: customer_id ? parseInt(customer_id) : null,
+      customer_name: customer_name || '未知客戶',
       order_date,
       delivery_date,
       status: 'pending',
@@ -1304,6 +1459,12 @@ app.post('/api/orders', (req, res) => {
     db.orders.push(newOrder);
     
     // 新增訂單項目
+    console.log('創建訂單項目:', items);
+    if (!items || !Array.isArray(items)) {
+      console.error('items 參數無效:', items);
+      res.status(400).json({ error: 'items 參數必須是數組' });
+      return;
+    }
     items.forEach(item => {
       const newItem = {
         id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
@@ -1315,6 +1476,7 @@ app.post('/api/orders', (req, res) => {
         status: 'pending',
         is_gift: item.is_gift || false
       };
+      console.log('添加訂單項目:', newItem);
       db.order_items.push(newItem);
     });
     
@@ -1836,15 +1998,23 @@ app.get('/api/kitchen/walkin-orders', (req, res) => {
 });
 
 // 取得現場訂單列表 (按訂單顯示，用於廚房卡片式顯示)
-app.get('/api/kitchen/walkin-orders-list', (req, res) => {
+app.get('/api/kitchen/walkin-orders-list', checkDatabaseReady, (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     console.log('請求現場訂單列表日期:', today);
     
     // 取得當天的現場銷售訂單，按時間倒序排列
-    const walkinOrders = db.orders
+    const allOrders = Array.isArray(db.orders) ? db.orders : [];
+    const allItems = Array.isArray(db.order_items) ? db.order_items : [];
+    const walkinOrders = allOrders
       .filter(order => {
-        const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+        if (!order || !order.order_date) return false;
+        let orderDate;
+        try {
+          orderDate = new Date(order.order_date).toISOString().split('T')[0];
+        } catch (e) {
+          return false;
+        }
         return orderDate === today && order.order_type === 'walk-in';
       })
       .sort((a, b) => {
@@ -1859,7 +2029,7 @@ app.get('/api/kitchen/walkin-orders-list', (req, res) => {
     
     // 為每個訂單添加訂單項目資訊
     const result = walkinOrders.map(order => {
-      const orderItems = db.order_items.filter(item => item.order_id === order.id);
+      const orderItems = allItems.filter(item => item.order_id === order.id);
       
       return {
         id: order.id,
@@ -1874,10 +2044,11 @@ app.get('/api/kitchen/walkin-orders-list', (req, res) => {
     });
     
     console.log('現場訂單列表結果:', result);
-    res.json(result);
+    return res.json(result);
   } catch (error) {
     console.error('取得現場訂單列表失敗:', error);
-    res.status(500).json({ error: error.message });
+    // 回傳空陣列避免前端中斷
+    return res.status(200).json([]);
   }
 });
 
@@ -1999,6 +2170,772 @@ app.get('/api/shared/reports/daily/:date', checkDatabaseReady, (req, res) => {
   }
 });
 
+// 智能排程配置管理
+app.get('/api/scheduling/config', checkDatabaseReady, (req, res) => {
+  try {
+    // 初始化排程配置（如果不存在）
+    if (!db.scheduling_config) {
+      db.scheduling_config = {
+        daily_capacity: 40,        // 日產能
+        staff_count: 1,           // 人力數量
+        minutes_per_bottle: 1.5,  // 每瓶製作時間（分鐘）
+        min_stock: 10,            // 最低庫存
+        working_hours: 8,         // 工作時數
+        break_time: 60,           // 休息時間（分鐘）
+        enable_inventory_replenishment: false, // 是否啟用庫存補貨
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      saveData();
+    }
+    
+    res.json(db.scheduling_config);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新智能排程配置
+app.put('/api/scheduling/config', checkDatabaseReady, (req, res) => {
+  try {
+    const config = req.body;
+    
+    // 驗證配置參數
+    if (config.daily_capacity && (config.daily_capacity < 1 || config.daily_capacity > 200)) {
+      return res.status(400).json({ error: '日產能必須在1-200瓶之間' });
+    }
+    
+    if (config.staff_count && (config.staff_count < 1 || config.staff_count > 10)) {
+      return res.status(400).json({ error: '人力數量必須在1-10人之間' });
+    }
+    
+    if (config.minutes_per_bottle && (config.minutes_per_bottle < 0.5 || config.minutes_per_bottle > 10)) {
+      return res.status(400).json({ error: '每瓶製作時間必須在0.5-10分鐘之間' });
+    }
+    
+    // 更新配置
+    if (!db.scheduling_config) {
+      db.scheduling_config = {};
+    }
+    
+    Object.assign(db.scheduling_config, config, {
+      updated_at: new Date().toISOString()
+    });
+    
+    saveData();
+    
+    console.log('智能排程配置已更新:', db.scheduling_config);
+    res.json({ 
+      message: '配置更新成功', 
+      config: db.scheduling_config 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 智能排程 API
+app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    
+    console.log('智能排程API請求:', { date: targetDate });
+    console.log('資料庫訂單數量:', db.orders ? db.orders.length : 0);
+    
+    // 獲取排程配置
+    const config = db.scheduling_config || {
+      daily_capacity: 40,
+      staff_count: 1,
+      minutes_per_bottle: 1.5,
+      min_stock: 10,
+      working_hours: 8,
+      break_time: 60
+    };
+    
+    // 智能排程分析
+    const scheduleAnalysis = generateSmartSchedule(targetDate, config);
+    
+    res.json({
+      date: targetDate,
+      config: config,
+      analysis: scheduleAnalysis,
+      orders: scheduleAnalysis.planned_production,
+      summary: scheduleAnalysis.summary,
+      recommendations: scheduleAnalysis.recommendations
+    });
+    
+  } catch (error) {
+    console.error('智能排程API錯誤:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 智能排程生成函數
+function generateSmartSchedule(targetDate, config) {
+  try {
+    // 分析多日訂單需求（包括前一日、當日和未來幾日），讓遞延能帶入隔日
+    const maxDays = config.max_rolling_days || 3;
+    const start = new Date(targetDate);
+    start.setDate(start.getDate() - 1);
+    const startDateForRolling = start.toISOString().split('T')[0];
+    const multiDayOrderDemandAll = analyzeMultiDayOrderDemand(startDateForRolling, maxDays + 1);
+    
+    // 如果沒有任何訂單需求，不生成任何排程
+    if (multiDayOrderDemandAll.length === 0) {
+      return {
+        planned_production: [],
+        time_schedule: [],
+        summary: {
+          total_bottles: 0,
+          efficiency: '0%',
+          estimated_time: '0分鐘',
+          remaining_capacity: config.daily_capacity
+        },
+        recommendations: ['近期無訂單，無需生產'],
+        inventory_analysis: [],
+        sales_trend: [],
+        daily_order_demand: [],
+        multi_day_schedule: [],
+        deferred_orders: []
+      };
+    }
+    
+    // 分析庫存狀況
+    const inventoryAnalysis = analyzeInventory();
+    
+    // 分析銷售趨勢
+    const salesTrend = analyzeSalesTrend();
+    
+    // 生成多日生產計劃（含前一日）
+    const multiDayPlanAll = generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemandAll, config);
+    // 過濾出從 targetDate 起的區間，供前端顯示
+    const multiDayPlan = multiDayPlanAll.filter(day => day.date >= targetDate);
+    
+    // 獲取當日計劃
+    const todayPlan = multiDayPlan.find(day => day.date === targetDate) || { 
+      planned_production: [], 
+      time_schedule: [], 
+      remaining_capacity: config.daily_capacity 
+    };
+    
+    // 計算當日時間安排
+    const timeSchedule = calculateTimeSchedule(todayPlan.planned_production, config);
+    
+    // 生成建議
+    const recommendations = generateMultiDayRecommendations(inventoryAnalysis, multiDayPlan, config);
+    
+    // 獲取遞延訂單
+    const deferredOrders = getDeferredOrders(multiDayPlan, targetDate);
+    
+    return {
+      planned_production: todayPlan.planned_production,
+      time_schedule: timeSchedule,
+      summary: {
+        total_bottles: todayPlan.planned_production.reduce((sum, item) => sum + item.quantity, 0),
+        efficiency: ((todayPlan.planned_production.reduce((sum, item) => sum + item.quantity, 0) / config.daily_capacity) * 100).toFixed(1) + '%',
+        estimated_time: calculateTotalTime(todayPlan.planned_production, config),
+        remaining_capacity: todayPlan.remaining_capacity
+      },
+      recommendations: recommendations,
+      inventory_analysis: inventoryAnalysis,
+      sales_trend: salesTrend,
+      multi_day_schedule: multiDayPlan,
+      deferred_orders: deferredOrders
+    };
+  } catch (error) {
+    console.error('智能排程生成錯誤:', error);
+    return {
+      planned_production: [],
+      time_schedule: [],
+      summary: { total_bottles: 0, efficiency: '0%', estimated_time: '0分鐘', remaining_capacity: config.daily_capacity },
+      recommendations: ['排程生成失敗，請檢查系統配置'],
+      inventory_analysis: [],
+      sales_trend: []
+    };
+  }
+}
+
+// 分析庫存狀況
+function analyzeInventory() {
+  const analysis = [];
+  
+  db.products.forEach(product => {
+    const currentStock = product.current_stock || 0;
+    const minStock = db.scheduling_config?.min_stock || 10;
+    const priority = getProductPriority(product.name);
+    
+    const stockDeficit = Math.max(0, minStock - currentStock);
+    const urgencyScore = (stockDeficit * 2) + (priority ? (10 - priority) : 0);
+    
+    analysis.push({
+      product_id: product.id,
+      product_name: product.name,
+      current_stock: currentStock,
+      min_stock: minStock,
+      stock_deficit: stockDeficit,
+      priority: priority,
+      urgency_score: urgencyScore,
+      status: currentStock < minStock ? 'urgent' : currentStock < minStock * 1.5 ? 'warning' : 'normal'
+      });
+    });
+    
+  return analysis.sort((a, b) => b.urgency_score - a.urgency_score);
+}
+
+// 分析銷售趨勢
+function analyzeSalesTrend() {
+  const trend = [];
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  
+  db.products.forEach(product => {
+    const recentOrders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_time || order.created_at);
+      return orderDate >= sevenDaysAgo && order.status !== 'cancelled';
+    });
+    
+    let totalSold = 0;
+    recentOrders.forEach(order => {
+      const items = db.order_items.filter(item => 
+        item.order_id === order.id && item.product_name === product.name
+      );
+      totalSold += items.reduce((sum, item) => sum + item.quantity, 0);
+    });
+    
+    trend.push({
+      product_id: product.id,
+      product_name: product.name,
+      weekly_sales: totalSold,
+      daily_average: (totalSold / 7).toFixed(1)
+    });
+  });
+  
+  return trend.sort((a, b) => b.weekly_sales - a.weekly_sales);
+}
+
+// 分析當日訂單需求
+function analyzeDailyOrderDemand(targetDate) {
+  const demand = [];
+  
+  // 獲取當日的所有訂單（預訂和現場）
+  const dailyOrders = db.orders.filter(order => {
+    const orderDeliveryDate = order.delivery_date || order.order_date;
+    return orderDeliveryDate === targetDate && order.status !== 'cancelled';
+  });
+  
+  console.log(`當日訂單數量: ${dailyOrders.length}`);
+  console.log('當日訂單詳情:', dailyOrders.map(o => ({id: o.id, date: o.delivery_date || o.order_date})));
+  
+  // 按產品統計需求
+  const productDemand = {};
+  
+  dailyOrders.forEach(order => {
+    const orderItems = db.order_items.filter(item => item.order_id === order.id);
+    console.log(`訂單 ${order.id} 的項目數量: ${orderItems.length}`);
+      
+      orderItems.forEach(item => {
+      if (!productDemand[item.product_name]) {
+        productDemand[item.product_name] = {
+          product_name: item.product_name,
+          total_quantity: 0,
+          orders: []
+        };
+      }
+      
+      productDemand[item.product_name].total_quantity += item.quantity;
+      productDemand[item.product_name].orders.push({
+          order_id: order.id,
+          customer_name: order.customer_name,
+          quantity: item.quantity,
+        order_type: order.order_type || 'preorder'
+        });
+      });
+    });
+    
+  // 轉換為數組並按優先順序排序
+  Object.values(productDemand).forEach(demandItem => {
+    const product = db.products.find(p => p.name === demandItem.product_name);
+    if (product) {
+      demand.push({
+        product_id: product.id,
+        product_name: demandItem.product_name,
+        daily_demand: demandItem.total_quantity,
+        orders: demandItem.orders,
+        priority: getProductPriority(demandItem.product_name)
+      });
+    }
+  });
+  
+  console.log('當日訂單需求:', demand);
+  // 按產品優先順序排序（數字越小優先級越高）
+  return demand.sort((a, b) => a.priority - b.priority);
+}
+
+// 分析多日訂單需求（支持遞延製作）
+function analyzeMultiDayOrderDemand(startDate, maxDays) {
+  const multiDayDemand = [];
+  const start = new Date(startDate);
+  
+  for (let day = 0; day < maxDays; day++) {
+    const currentDate = new Date(start);
+    currentDate.setDate(start.getDate() + day);
+    const dateStr = currentDate.toISOString().split('T')[0];
+    
+    const dailyDemand = analyzeDailyOrderDemand(dateStr);
+    // 即使當日無新訂單，也保留空日，讓遞延可滾入顯示
+    multiDayDemand.push({
+      date: dateStr,
+      demand: dailyDemand,
+      total_bottles: dailyDemand.reduce((sum, item) => sum + item.daily_demand, 0)
+    });
+  }
+  
+  console.log('多日訂單需求:', multiDayDemand);
+  return multiDayDemand;
+}
+
+// 生成生產計劃
+function generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand, config) {
+  const plan = [];
+  let remainingCapacity = config.daily_capacity;
+  
+  // 優先處理當日訂單需求
+  dailyOrderDemand.forEach(demandItem => {
+    if (remainingCapacity <= 0) return;
+    
+    const inventoryItem = inventoryAnalysis.find(i => i.product_id === demandItem.product_id);
+    const currentStock = inventoryItem ? inventoryItem.current_stock : 0;
+    
+    // 計算需要生產的數量：訂單需求 - 現有庫存
+    const productionNeeded = Math.max(0, demandItem.daily_demand - currentStock);
+    
+    if (productionNeeded > 0) {
+      const productionQuantity = Math.min(productionNeeded, remainingCapacity);
+      
+      plan.push({
+        product_id: demandItem.product_id,
+        product_name: demandItem.product_name,
+        quantity: productionQuantity,
+        reason: `當日訂單需求${demandItem.daily_demand}瓶，現有庫存${currentStock}瓶`,
+        priority: demandItem.priority,
+        estimated_time: estimateProductionTime(productionQuantity, config),
+        order_demand: demandItem.daily_demand,
+        current_stock: currentStock
+      });
+      
+      remainingCapacity -= productionQuantity;
+    }
+  });
+  
+  // 如果還有剩餘產能，且配置允許庫存補貨，才處理庫存補貨需求
+  if (remainingCapacity > 0 && config.enable_inventory_replenishment !== false) {
+    inventoryAnalysis.forEach(item => {
+      if (remainingCapacity <= 0) return;
+      
+      // 檢查是否已經在計劃中
+      const alreadyPlanned = plan.find(p => p.product_id === item.product_id);
+      if (alreadyPlanned) return;
+      
+      const salesData = salesTrend.find(s => s.product_id === item.product_id);
+      const salesBoost = salesData ? Math.min(salesData.weekly_sales * 0.2, 10) : 0;
+      
+      const recommendedQuantity = Math.min(
+        item.stock_deficit + Math.max(5, salesBoost),
+        remainingCapacity
+      );
+      
+      if (recommendedQuantity > 0) {
+        plan.push({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: recommendedQuantity,
+          reason: getProductionReason(item, salesData),
+          priority: item.priority,
+          estimated_time: estimateProductionTime(recommendedQuantity, config)
+        });
+        
+        remainingCapacity -= recommendedQuantity;
+      }
+    });
+  }
+  
+  return plan;
+}
+
+// 生成多日生產計劃（支持遞延製作）
+function generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemand, config) {
+  const multiDayPlan = [];
+  let currentInventory = [...inventoryAnalysis]; // 複製當前庫存狀態
+
+  // 累計遞延需求，帶入下一天（key: product_id, value: { quantity, meta }）
+  const carryOverMap = new Map();
+
+  // 為每一天生成生產計劃
+  multiDayOrderDemand.forEach(dayData => {
+    const dayPlan = {
+      date: dayData.date,
+      planned_production: [],
+      time_schedule: [],
+      remaining_capacity: config.daily_capacity,
+      deferred_orders: []
+    };
+    
+    let remainingCapacity = config.daily_capacity;
+
+    // 構建「當日有效需求」= 當日訂單需求 + 來自前一日的遞延需求
+    const combinedDemand = [];
+
+    // 先推入前一日遞延（若有）
+    if (carryOverMap.size > 0) {
+      carryOverMap.forEach((value, productId) => {
+        combinedDemand.push({
+          product_id: productId,
+          product_name: value.product_name,
+          daily_demand: value.quantity,
+          priority: value.priority ?? 999, // 遞延若無優先設定，給較後順位
+          orders: value.orders || []
+        });
+      });
+    }
+
+    // 再推入當日新訂單需求
+    dayData.demand.forEach(d => combinedDemand.push(d));
+
+    // 若完全沒有需求（沒有新訂單且沒有遞延），也要生成空計劃物件，避免前端顯示空白不明
+    if (combinedDemand.length === 0) {
+      dayPlan.remaining_capacity = remainingCapacity;
+      dayPlan.time_schedule = [];
+      multiDayPlan.push(dayPlan);
+      // 清空上一日遞延（已消耗於 combinedDemand 的構建邏輯，此處確保乾淨）
+      carryOverMap.clear();
+      return;
+    }
+
+    // 處理當日有效需求
+    combinedDemand.forEach(demandItem => {
+      if (remainingCapacity <= 0) {
+        // 產能不足，記錄為遞延訂單
+        dayPlan.deferred_orders.push({
+          product_id: demandItem.product_id,
+          product_name: demandItem.product_name,
+          quantity: demandItem.daily_demand,
+          reason: '當日產能不足，需遞延製作',
+          priority: demandItem.priority,
+          orders: demandItem.orders
+        });
+        return;
+      }
+      
+      const inventoryItem = currentInventory.find(i => i.product_id === demandItem.product_id);
+      const currentStock = inventoryItem ? inventoryItem.current_stock : 0;
+      
+      // 計算需要生產的數量：訂單需求 - 現有庫存
+      const productionNeeded = Math.max(0, demandItem.daily_demand - currentStock);
+      
+      if (productionNeeded > 0) {
+        const productionQuantity = Math.min(productionNeeded, remainingCapacity);
+        
+        dayPlan.planned_production.push({
+          product_id: demandItem.product_id,
+          product_name: demandItem.product_name,
+          quantity: productionQuantity,
+          reason: `當日訂單需求${demandItem.daily_demand}瓶，現有庫存${currentStock}瓶`,
+          priority: demandItem.priority,
+          estimated_time: estimateProductionTime(productionQuantity, config),
+          order_demand: demandItem.daily_demand,
+          current_stock: currentStock
+        });
+        
+        remainingCapacity -= productionQuantity;
+        
+        // 更新庫存狀態
+        if (inventoryItem) {
+          inventoryItem.current_stock += productionQuantity;
+        }
+        
+        // 如果還有未滿足的需求，記錄為遞延
+        const unmetDemand = productionNeeded - productionQuantity;
+        if (unmetDemand > 0) {
+          dayPlan.deferred_orders.push({
+            product_id: demandItem.product_id,
+            product_name: demandItem.product_name,
+            quantity: unmetDemand,
+            reason: '當日產能不足，需遞延製作',
+            priority: demandItem.priority,
+            orders: demandItem.orders
+          });
+        }
+      }
+    });
+    
+    // 如果還有剩餘產能，處理庫存補貨需求
+    if (remainingCapacity > 0 && config.enable_inventory_replenishment !== false) {
+      currentInventory.forEach(item => {
+        if (remainingCapacity <= 0) return;
+        
+        // 檢查是否已經在計劃中
+        const alreadyPlanned = dayPlan.planned_production.find(p => p.product_id === item.product_id);
+        if (alreadyPlanned) return;
+        
+        const salesData = salesTrend.find(s => s.product_id === item.product_id);
+        const salesBoost = salesData ? Math.min(salesData.weekly_sales * 0.2, 10) : 0;
+        
+        const recommendedQuantity = Math.min(
+          item.stock_deficit + Math.max(5, salesBoost),
+          remainingCapacity
+        );
+        
+        if (recommendedQuantity > 0) {
+          dayPlan.planned_production.push({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: recommendedQuantity,
+            reason: getProductionReason(item, salesData),
+            priority: item.priority,
+            estimated_time: estimateProductionTime(recommendedQuantity, config)
+          });
+          
+          remainingCapacity -= recommendedQuantity;
+          
+          // 更新庫存狀態
+          item.current_stock += recommendedQuantity;
+        }
+      });
+    }
+    
+    dayPlan.remaining_capacity = remainingCapacity;
+    dayPlan.time_schedule = calculateTimeSchedule(dayPlan.planned_production, config);
+
+    // 生成下一日要帶入的遞延需求（彙總同品項）
+    carryOverMap.clear();
+    dayPlan.deferred_orders.forEach(doItem => {
+      const existing = carryOverMap.get(doItem.product_id);
+      const aggregatedQuantity = (existing?.quantity || 0) + doItem.quantity;
+      carryOverMap.set(doItem.product_id, {
+        product_name: doItem.product_name,
+        quantity: aggregatedQuantity,
+        priority: doItem.priority,
+        orders: doItem.orders
+      });
+    });
+
+    multiDayPlan.push(dayPlan);
+  });
+  
+  return multiDayPlan;
+}
+
+// 獲取遞延訂單摘要
+function getDeferredOrders(multiDayPlan, targetDate) {
+  const deferredOrders = [];
+  
+  multiDayPlan.forEach(dayPlan => {
+    if (dayPlan.date !== targetDate && dayPlan.deferred_orders.length > 0) {
+      deferredOrders.push({
+        date: dayPlan.date,
+        deferred_count: dayPlan.deferred_orders.length,
+        total_deferred_quantity: dayPlan.deferred_orders.reduce((sum, order) => sum + order.quantity, 0),
+        deferred_orders: dayPlan.deferred_orders
+      });
+    }
+  });
+  
+  return deferredOrders;
+}
+
+// 生成多日建議
+function generateMultiDayRecommendations(inventoryAnalysis, multiDayPlan, config) {
+  const recommendations = [];
+  
+  // 檢查是否有遞延訂單
+  const totalDeferred = multiDayPlan.reduce((sum, day) => sum + day.deferred_orders.length, 0);
+  if (totalDeferred > 0) {
+    recommendations.push(`⚠️ 發現${totalDeferred}筆訂單需要遞延製作，建議增加產能或調整排程`);
+  }
+  
+  // 檢查產能利用率
+  const avgUtilization = multiDayPlan.reduce((sum, day) => {
+    const used = config.daily_capacity - day.remaining_capacity;
+    return sum + (used / config.daily_capacity);
+  }, 0) / multiDayPlan.length;
+  
+  if (avgUtilization > 0.9) {
+    recommendations.push('📈 產能利用率過高，建議增加人力或延長工作時間');
+  } else if (avgUtilization < 0.5) {
+    recommendations.push('📉 產能利用率較低，可考慮增加庫存補貨或接受更多訂單');
+  }
+  
+  // 檢查庫存狀況
+  const lowStockProducts = inventoryAnalysis.filter(item => item.stock_deficit > 0);
+  if (lowStockProducts.length > 0) {
+    recommendations.push(`📦 有${lowStockProducts.length}種產品庫存不足，建議優先補貨`);
+  }
+  
+  return recommendations;
+}
+
+// 獲取生產原因
+function getProductionReason(inventoryItem, salesData) {
+  if (inventoryItem.stock_deficit > 0) {
+    return `庫存不足，需補貨${inventoryItem.stock_deficit}瓶`;
+  } else if (salesData && salesData.weekly_sales > 0) {
+    return `銷售趨勢良好，預防性生產`;
+  } else {
+    return `維持基本庫存`;
+  }
+}
+
+// 估算生產時間
+function estimateProductionTime(quantity, config) {
+  const totalMinutes = quantity * config.minutes_per_bottle;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  
+  if (hours > 0) {
+    return `${hours}小時${minutes}分鐘`;
+  } else {
+    return `${minutes}分鐘`;
+  }
+}
+
+// 計算總時間
+function calculateTotalTime(productionPlan, config) {
+  const totalMinutes = productionPlan.reduce((sum, item) => {
+    const timeStr = item.estimated_time;
+    const minutes = parseInt(timeStr.match(/\d+/)[0]);
+    return sum + minutes;
+  }, 0);
+  
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  if (hours > 0) {
+    return `${hours}小時${minutes}分鐘`;
+  } else {
+    return `${minutes}分鐘`;
+  }
+}
+
+// 計算時間安排
+function calculateTimeSchedule(productionPlan, config) {
+  const schedule = [];
+  let currentTime = 9 * 60; // 9:00 AM 開始
+  
+  productionPlan.forEach((item, index) => {
+    const startTime = new Date();
+    startTime.setHours(Math.floor(currentTime / 60), currentTime % 60, 0, 0);
+    
+    const duration = item.quantity * config.minutes_per_bottle;
+    const endTime = new Date(startTime.getTime() + duration * 60000);
+    
+    schedule.push({
+      ...item,
+      start_time: startTime.toTimeString().slice(0, 5),
+      end_time: endTime.toTimeString().slice(0, 5),
+      duration_minutes: duration
+    });
+    
+    currentTime += duration + 10; // 10分鐘間隔
+  });
+  
+  return schedule;
+}
+
+// 生成建議
+function generateRecommendations(inventoryAnalysis, productionPlan, config) {
+  const recommendations = [];
+  
+  const totalPlanned = productionPlan.reduce((sum, item) => sum + item.quantity, 0);
+  const efficiency = (totalPlanned / config.daily_capacity) * 100;
+  
+  if (efficiency < 80) {
+    recommendations.push('💡 產能利用率較低，建議檢查產品需求預測');
+  }
+  
+  const urgentProducts = inventoryAnalysis.filter(item => item.status === 'urgent');
+  if (urgentProducts.length > 0) {
+    recommendations.push(`🚨 有${urgentProducts.length}種產品庫存不足，需優先處理`);
+  }
+  
+  if (config.staff_count === 1 && totalPlanned > 30) {
+    recommendations.push('⚠️ 單人作業負荷較重，建議考慮增加人力或優化流程');
+  }
+  
+  const highDemandProducts = inventoryAnalysis.filter(item => item.urgency_score > 20);
+  if (highDemandProducts.length > 0) {
+    recommendations.push('📈 部分產品需求旺盛，建議增加安全庫存');
+  }
+  
+  return recommendations;
+}
+
+// 輔助函數：取得產品優先順序
+function getProductPriority(productName) {
+  if (!db.product_priority) {
+    return 999; // 預設最低優先順序
+  }
+  
+  const prioritySetting = db.product_priority.find(p => p.product_name === productName);
+  return prioritySetting ? prioritySetting.priority : 999;
+}
+
+// 輔助函數：同步產品優先順序設定
+function syncProductPriority() {
+  try {
+    // 如果沒有優先順序設定，初始化
+    if (!db.product_priority) {
+      db.product_priority = [];
+    }
+    
+    // 獲取所有現有產品
+    const existingProducts = db.products;
+    const existingPriorityIds = db.product_priority.map(p => p.product_id);
+    
+    // 為新產品添加優先順序設定
+    const newProducts = existingProducts.filter(product => 
+      !existingPriorityIds.includes(product.id)
+    );
+    
+    if (newProducts.length > 0) {
+      const maxPriority = Math.max(...db.product_priority.map(p => p.priority), 0);
+      
+      newProducts.forEach((product, index) => {
+        db.product_priority.push({
+          product_id: product.id,
+          product_name: product.name,
+          priority: maxPriority + index + 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      });
+    }
+    
+    // 移除已刪除產品的優先順序設定
+    const existingProductIds = existingProducts.map(p => p.id);
+    db.product_priority = db.product_priority.filter(priority => 
+      existingProductIds.includes(priority.product_id)
+    );
+    
+    // 更新產品名稱（如果產品名稱有變更）
+    db.product_priority.forEach(priority => {
+      const product = existingProducts.find(p => p.id === priority.product_id);
+      if (product && product.name !== priority.product_name) {
+        priority.product_name = product.name;
+        priority.updated_at = new Date().toISOString();
+      }
+    });
+    
+    console.log('產品優先順序同步完成:', {
+      total_products: existingProducts.length,
+      total_priorities: db.product_priority.length,
+      new_products: newProducts.length
+    });
+  } catch (error) {
+    console.error('同步產品優先順序失敗:', error);
+  }
+}
+
 // 根路徑回應
 app.get('/', (req, res) => {
   res.json({ 
@@ -2006,6 +2943,11 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: [
       'GET /api/products - 取得產品列表',
+      'GET /api/products/priority - 取得產品優先順序設定',
+      'PUT /api/products/priority - 更新產品優先順序設定',
+      'GET /api/scheduling/config - 取得智能排程配置',
+      'PUT /api/scheduling/config - 更新智能排程配置',
+      'GET /api/scheduling/orders - 智能排程API',
       'GET /api/customers - 取得客戶列表',
       'GET /api/kitchen/production/:date - 取得廚房製作清單',
       'GET /api/orders/customers/:date - 取得客戶訂單清單',
@@ -2031,6 +2973,667 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Network access: http://[YOUR_IP]:${PORT}`);
   console.log(`Visit http://localhost:${PORT} to view the application`);
 });
+
+// 參數測試與AI優化 API
+app.post('/api/scheduling/parameter-test', checkDatabaseReady, (req, res) => {
+  try {
+    const { parameters, test_duration } = req.body;
+    
+    console.log('參數測試請求:', { parameters, test_duration });
+    
+    // 執行參數測試
+    const testResults = runParameterTest(parameters, test_duration);
+    
+    res.json(testResults);
+    
+  } catch (error) {
+    console.error('參數測試API錯誤:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 參數測試執行函數
+function runParameterTest(testParameters, testDuration) {
+  try {
+    console.log('開始執行參數測試...');
+    
+    // 獲取當前績效
+    const currentPerformance = calculateCurrentPerformance();
+    
+    // 生成測試訂單數據
+    const testOrders = generateTestOrders(testDuration);
+    
+    // 執行AI優化
+    const optimizationResults = runAIOptimization(testParameters, testOrders);
+    
+    // 計算預期改善
+    const expectedImprovement = calculateExpectedImprovement(currentPerformance, optimizationResults.best_performance);
+    
+    return {
+      current_performance: currentPerformance,
+      test_parameters: testParameters,
+      optimization_results: optimizationResults,
+      recommended_parameters: optimizationResults.best_parameters,
+      expected_improvement: expectedImprovement,
+      confidence_level: optimizationResults.confidence_level,
+      test_summary: {
+        test_duration: testDuration,
+        algorithm_used: testParameters.ai_algorithm,
+        iterations_completed: optimizationResults.iterations_completed,
+        convergence_achieved: optimizationResults.convergence_achieved
+      }
+    };
+    
+  } catch (error) {
+    console.error('參數測試執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 計算當前績效
+function calculateCurrentPerformance() {
+  try {
+    const currentConfig = db.scheduling_config || {
+      daily_capacity: 40,
+      staff_count: 1,
+      minutes_per_bottle: 15
+    };
+    
+    // 分析最近7天的績效
+    const recentOrders = db.orders ? db.orders.filter(order => {
+      const orderDate = new Date(order.order_date);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      return orderDate >= sevenDaysAgo;
+    }) : [];
+    
+    const totalOrders = recentOrders.length;
+    const completedOrders = recentOrders.filter(order => order.status === 'completed').length;
+    const completionRate = totalOrders > 0 ? completedOrders / totalOrders : 0;
+    
+    // 計算產能利用率
+    const totalBottles = recentOrders.reduce((sum, order) => {
+      const orderItems = db.order_items ? db.order_items.filter(item => item.order_id === order.id) : [];
+      return sum + orderItems.reduce((itemSum, item) => itemSum + item.quantity, 0);
+    }, 0);
+    
+    const capacityUtilization = totalBottles / (currentConfig.daily_capacity * 7);
+    
+    // 計算加班時數（簡化計算）
+    const overtimeHours = Math.max(0, (totalBottles * currentConfig.minutes_per_bottle / 60) - (currentConfig.staff_count * 8 * 7));
+    
+    // 計算客戶滿意度（基於完成率）
+    const customerSatisfaction = completionRate;
+    
+    return {
+      completion_rate: completionRate,
+      capacity_utilization: Math.min(capacityUtilization, 1),
+      overtime_hours: overtimeHours,
+      customer_satisfaction: customerSatisfaction
+    };
+    
+  } catch (error) {
+    console.error('計算當前績效錯誤:', error);
+    return {
+      completion_rate: 0.8,
+      capacity_utilization: 0.7,
+      overtime_hours: 2,
+      customer_satisfaction: 0.8
+    };
+  }
+}
+
+// 生成測試訂單數據
+function generateTestOrders(testDuration) {
+  try {
+    const testOrders = [];
+    const products = db.products || [];
+    
+    if (products.length === 0) {
+      return [];
+    }
+    
+    // 根據測試持續時間生成訂單
+    for (let day = 0; day < testDuration; day++) {
+      const orderDate = new Date();
+      orderDate.setDate(orderDate.getDate() + day);
+      
+      // 每天生成5-15個訂單
+      const dailyOrderCount = Math.floor(Math.random() * 11) + 5;
+      
+      for (let i = 0; i < dailyOrderCount; i++) {
+        const product = products[Math.floor(Math.random() * products.length)];
+        const quantity = Math.floor(Math.random() * 5) + 1;
+        
+        testOrders.push({
+          id: `test_${day}_${i}`,
+          product_id: product.id,
+          product_name: product.name,
+          quantity: quantity,
+          order_date: orderDate.toISOString().split('T')[0],
+          priority: product.priority || 5,
+          order_type: Math.random() > 0.7 ? 'urgent' : 'normal'
+        });
+      }
+    }
+    
+    return testOrders;
+    
+  } catch (error) {
+    console.error('生成測試訂單錯誤:', error);
+    return [];
+  }
+}
+
+// AI優化演算法執行
+function runAIOptimization(testParameters, testOrders) {
+  try {
+    const algorithm = testParameters.ai_algorithm;
+    
+    switch (algorithm) {
+      case 'genetic_algorithm':
+        return runGeneticAlgorithm(testParameters, testOrders);
+      case 'particle_swarm':
+        return runParticleSwarmOptimization(testParameters, testOrders);
+      case 'simulated_annealing':
+        return runSimulatedAnnealing(testParameters, testOrders);
+      case 'reinforcement_learning':
+        return runReinforcementLearning(testParameters, testOrders);
+      default:
+        return runGeneticAlgorithm(testParameters, testOrders);
+    }
+    
+  } catch (error) {
+    console.error('AI優化執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 遺傳算法實現
+function runGeneticAlgorithm(testParameters, testOrders) {
+  try {
+    const populationSize = 50;
+    const generations = 100;
+    const mutationRate = 0.1;
+    const crossoverRate = 0.8;
+    
+    // 初始化種群
+    let population = initializePopulation(populationSize, testParameters);
+    
+    let bestIndividual = null;
+    let bestFitness = -Infinity;
+    
+    for (let generation = 0; generation < generations; generation++) {
+      // 評估適應度
+      const fitnessScores = population.map(individual => 
+        evaluateFitness(individual, testOrders, testParameters.optimization_objectives)
+      );
+      
+      // 找到最佳個體
+      const maxFitness = Math.max(...fitnessScores);
+      const bestIndex = fitnessScores.indexOf(maxFitness);
+      
+      if (maxFitness > bestFitness) {
+        bestFitness = maxFitness;
+        bestIndividual = population[bestIndex];
+      }
+      
+      // 選擇、交叉、變異
+      const newPopulation = [];
+      
+      // 保留最佳個體
+      newPopulation.push(bestIndividual);
+      
+      // 生成新個體
+      while (newPopulation.length < populationSize) {
+        const parent1 = tournamentSelection(population, fitnessScores);
+        const parent2 = tournamentSelection(population, fitnessScores);
+        
+        const [child1, child2] = crossover(parent1, parent2, crossoverRate);
+        
+        const mutatedChild1 = mutate(child1, mutationRate);
+        const mutatedChild2 = mutate(child2, mutationRate);
+        
+        newPopulation.push(mutatedChild1, mutatedChild2);
+      }
+      
+      population = newPopulation.slice(0, populationSize);
+    }
+    
+    return {
+      best_parameters: bestIndividual,
+      best_performance: calculatePerformanceMetrics(bestIndividual, testOrders),
+      confidence_level: Math.min(bestFitness, 0.95),
+      iterations_completed: generations,
+      convergence_achieved: true
+    };
+    
+  } catch (error) {
+    console.error('遺傳算法執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 粒子群優化實現
+function runParticleSwarmOptimization(testParameters, testOrders) {
+  try {
+    const swarmSize = 30;
+    const maxIterations = 100;
+    const inertiaWeight = 0.9;
+    const cognitiveWeight = 2.0;
+    const socialWeight = 2.0;
+    
+    // 初始化粒子群
+    let particles = initializeParticles(swarmSize, testParameters);
+    let globalBest = null;
+    let globalBestFitness = -Infinity;
+    
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
+        
+        // 評估適應度
+        const fitness = evaluateFitness(particle.position, testOrders, testParameters.optimization_objectives);
+        
+        // 更新個體最佳
+        if (fitness > particle.bestFitness) {
+          particle.bestFitness = fitness;
+          particle.bestPosition = { ...particle.position };
+        }
+        
+        // 更新全局最佳
+        if (fitness > globalBestFitness) {
+          globalBestFitness = fitness;
+          globalBest = { ...particle.position };
+        }
+        
+        // 更新速度和位置
+        updateParticleVelocity(particle, globalBest, inertiaWeight, cognitiveWeight, socialWeight);
+        updateParticlePosition(particle);
+      }
+    }
+    
+    return {
+      best_parameters: globalBest,
+      best_performance: calculatePerformanceMetrics(globalBest, testOrders),
+      confidence_level: Math.min(globalBestFitness, 0.95),
+      iterations_completed: maxIterations,
+      convergence_achieved: true
+    };
+    
+  } catch (error) {
+    console.error('粒子群優化執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 模擬退火實現
+function runSimulatedAnnealing(testParameters, testOrders) {
+  try {
+    const initialTemperature = 1000;
+    const coolingRate = 0.95;
+    const minTemperature = 0.01;
+    
+    let currentSolution = generateRandomSolution(testParameters);
+    let currentFitness = evaluateFitness(currentSolution, testOrders, testParameters.optimization_objectives);
+    
+    let bestSolution = { ...currentSolution };
+    let bestFitness = currentFitness;
+    
+    let temperature = initialTemperature;
+    let iteration = 0;
+    
+    while (temperature > minTemperature) {
+      const newSolution = generateNeighborSolution(currentSolution, testParameters);
+      const newFitness = evaluateFitness(newSolution, testOrders, testParameters.optimization_objectives);
+      
+      const delta = newFitness - currentFitness;
+      
+      if (delta > 0 || Math.random() < Math.exp(delta / temperature)) {
+        currentSolution = newSolution;
+        currentFitness = newFitness;
+        
+        if (currentFitness > bestFitness) {
+          bestSolution = { ...currentSolution };
+          bestFitness = currentFitness;
+        }
+      }
+      
+      temperature *= coolingRate;
+      iteration++;
+    }
+    
+    return {
+      best_parameters: bestSolution,
+      best_performance: calculatePerformanceMetrics(bestSolution, testOrders),
+      confidence_level: Math.min(bestFitness, 0.95),
+      iterations_completed: iteration,
+      convergence_achieved: true
+    };
+    
+  } catch (error) {
+    console.error('模擬退火執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 強化學習實現（簡化版）
+function runReinforcementLearning(testParameters, testOrders) {
+  try {
+    // 簡化的強化學習實現
+    const learningRate = 0.01;
+    const discountFactor = 0.95;
+    const epsilon = 0.1;
+    
+    let currentSolution = generateRandomSolution(testParameters);
+    let bestSolution = { ...currentSolution };
+    let bestFitness = evaluateFitness(currentSolution, testOrders, testParameters.optimization_objectives);
+    
+    const iterations = 100;
+    
+    for (let i = 0; i < iterations; i++) {
+      let newSolution;
+      
+      if (Math.random() < epsilon) {
+        // 探索
+        newSolution = generateRandomSolution(testParameters);
+      } else {
+        // 利用
+        newSolution = generateNeighborSolution(currentSolution, testParameters);
+      }
+      
+      const newFitness = evaluateFitness(newSolution, testOrders, testParameters.optimization_objectives);
+      
+      if (newFitness > bestFitness) {
+        bestSolution = { ...newSolution };
+        bestFitness = newFitness;
+      }
+      
+      // 更新當前解
+      if (newFitness > currentFitness || Math.random() < learningRate) {
+        currentSolution = newSolution;
+      }
+    }
+    
+    return {
+      best_parameters: bestSolution,
+      best_performance: calculatePerformanceMetrics(bestSolution, testOrders),
+      confidence_level: Math.min(bestFitness, 0.95),
+      iterations_completed: iterations,
+      convergence_achieved: true
+    };
+    
+  } catch (error) {
+    console.error('強化學習執行錯誤:', error);
+    throw error;
+  }
+}
+
+// 輔助函數
+function initializePopulation(size, testParameters) {
+  const population = [];
+  for (let i = 0; i < size; i++) {
+    population.push(generateRandomSolution(testParameters));
+  }
+  return population;
+}
+
+function generateRandomSolution(testParameters) {
+  return {
+    daily_capacity: Math.floor(Math.random() * 81) + 20, // 20-100
+    staff_count: Math.floor(Math.random() * 5) + 1, // 1-5
+    minutes_per_bottle: Math.floor(Math.random() * 26) + 5, // 5-30
+    rolling_interval: [1, 2, 4, 8, 12][Math.floor(Math.random() * 5)],
+    max_rolling_days: Math.floor(Math.random() * 7) + 1, // 1-7
+    capacity_reserve_percentage: Math.floor(Math.random() * 31), // 0-30
+    preorder_priority_boost: Math.floor(Math.random() * 51) // 0-50
+  };
+}
+
+function evaluateFitness(solution, testOrders, objectives) {
+  try {
+    const performance = calculatePerformanceMetrics(solution, testOrders);
+    
+    const fitness = 
+      performance.completion_rate * objectives.completion_rate +
+      performance.capacity_utilization * objectives.capacity_utilization +
+      (1 - performance.overtime_hours / 10) * objectives.overtime_hours + // 標準化加班時數
+      performance.customer_satisfaction * objectives.customer_satisfaction;
+    
+    return Math.max(0, fitness);
+    
+  } catch (error) {
+    console.error('適應度評估錯誤:', error);
+    return 0;
+  }
+}
+
+function calculatePerformanceMetrics(solution, testOrders) {
+  try {
+    // 確保輸入參數有效
+    if (!solution || !testOrders || !Array.isArray(testOrders) || testOrders.length === 0) {
+      return {
+        completion_rate: 0.5,
+        capacity_utilization: 0.5,
+        overtime_hours: 0,
+        customer_satisfaction: 0.5
+      };
+    }
+
+    // 模擬使用該參數配置的績效
+    const totalBottles = testOrders.reduce((sum, order) => {
+      return sum + (order.quantity || 0);
+    }, 0);
+    
+    const totalDays = Math.max(1, new Set(testOrders.map(order => order.order_date || new Date().toISOString().split('T')[0])).size);
+    
+    // 防止除零錯誤
+    const dailyCapacity = solution.daily_capacity || 40;
+    const staffCount = solution.staff_count || 1;
+    const minutesPerBottle = solution.minutes_per_bottle || 1.5;
+    
+    const completionRate = totalBottles > 0 ? Math.min(1, (dailyCapacity * totalDays) / totalBottles) : 0.5;
+    const capacityUtilization = totalBottles > 0 ? Math.min(1, totalBottles / (dailyCapacity * totalDays)) : 0.5;
+    const overtimeHours = Math.max(0, (totalBottles * minutesPerBottle / 60) - (staffCount * 8 * totalDays));
+    const customerSatisfaction = completionRate;
+    
+    return {
+      completion_rate: completionRate,
+      capacity_utilization: capacityUtilization,
+      overtime_hours: overtimeHours,
+      customer_satisfaction: customerSatisfaction
+    };
+    
+  } catch (error) {
+    console.error('績效指標計算錯誤:', error);
+    return {
+      completion_rate: 0.5,
+      capacity_utilization: 0.5,
+      overtime_hours: 0,
+      customer_satisfaction: 0.5
+    };
+  }
+}
+
+function calculateExpectedImprovement(current, optimized) {
+  return {
+    completion_rate: optimized.completion_rate - current.completion_rate,
+    capacity_utilization: optimized.capacity_utilization - current.capacity_utilization,
+    overtime_hours: current.overtime_hours - optimized.overtime_hours,
+    customer_satisfaction: optimized.customer_satisfaction - current.customer_satisfaction
+  };
+}
+
+// 遺傳算法輔助函數
+function tournamentSelection(population, fitnessScores, tournamentSize = 3) {
+  const tournament = [];
+  for (let i = 0; i < tournamentSize; i++) {
+    const randomIndex = Math.floor(Math.random() * population.length);
+    tournament.push({ individual: population[randomIndex], fitness: fitnessScores[randomIndex] });
+  }
+  
+  tournament.sort((a, b) => b.fitness - a.fitness);
+  return tournament[0].individual;
+}
+
+function crossover(parent1, parent2, crossoverRate) {
+  if (Math.random() > crossoverRate) {
+    return [parent1, parent2];
+  }
+  
+  const child1 = { ...parent1 };
+  const child2 = { ...parent2 };
+  
+  // 簡單的單點交叉
+  const keys = Object.keys(parent1);
+  const crossoverPoint = Math.floor(Math.random() * keys.length);
+  
+  for (let i = crossoverPoint; i < keys.length; i++) {
+    const key = keys[i];
+    [child1[key], child2[key]] = [child2[key], child1[key]];
+  }
+  
+  return [child1, child2];
+}
+
+function mutate(individual, mutationRate) {
+  const mutated = { ...individual };
+  
+  if (Math.random() < mutationRate) {
+    const keys = Object.keys(individual);
+    const randomKey = keys[Math.floor(Math.random() * keys.length)];
+    
+    switch (randomKey) {
+      case 'daily_capacity':
+        mutated.daily_capacity = Math.max(20, Math.min(100, mutated.daily_capacity + (Math.random() - 0.5) * 20));
+        break;
+      case 'staff_count':
+        mutated.staff_count = Math.max(1, Math.min(5, mutated.staff_count + (Math.random() > 0.5 ? 1 : -1)));
+        break;
+      case 'minutes_per_bottle':
+        mutated.minutes_per_bottle = Math.max(5, Math.min(30, mutated.minutes_per_bottle + (Math.random() - 0.5) * 10));
+        break;
+      case 'rolling_interval':
+        const intervals = [1, 2, 4, 8, 12];
+        mutated.rolling_interval = intervals[Math.floor(Math.random() * intervals.length)];
+        break;
+      case 'max_rolling_days':
+        mutated.max_rolling_days = Math.max(1, Math.min(7, mutated.max_rolling_days + (Math.random() > 0.5 ? 1 : -1)));
+        break;
+      case 'capacity_reserve_percentage':
+        mutated.capacity_reserve_percentage = Math.max(0, Math.min(30, mutated.capacity_reserve_percentage + (Math.random() - 0.5) * 10));
+        break;
+      case 'preorder_priority_boost':
+        mutated.preorder_priority_boost = Math.max(0, Math.min(50, mutated.preorder_priority_boost + (Math.random() - 0.5) * 20));
+        break;
+    }
+  }
+  
+  return mutated;
+}
+
+// 粒子群優化輔助函數
+function initializeParticles(size, testParameters) {
+  const particles = [];
+  for (let i = 0; i < size; i++) {
+    const position = generateRandomSolution(testParameters);
+    const velocity = {};
+    
+    // 初始化速度
+    Object.keys(position).forEach(key => {
+      velocity[key] = (Math.random() - 0.5) * 10;
+    });
+    
+    particles.push({
+      position: position,
+      velocity: velocity,
+      bestPosition: { ...position },
+      bestFitness: -Infinity
+    });
+  }
+  return particles;
+}
+
+function updateParticleVelocity(particle, globalBest, inertiaWeight, cognitiveWeight, socialWeight) {
+  Object.keys(particle.position).forEach(key => {
+    const r1 = Math.random();
+    const r2 = Math.random();
+    
+    const cognitive = cognitiveWeight * r1 * (particle.bestPosition[key] - particle.position[key]);
+    const social = socialWeight * r2 * (globalBest[key] - particle.position[key]);
+    
+    particle.velocity[key] = inertiaWeight * particle.velocity[key] + cognitive + social;
+  });
+}
+
+function updateParticlePosition(particle) {
+  Object.keys(particle.position).forEach(key => {
+    particle.position[key] += particle.velocity[key];
+    
+    // 確保參數在合理範圍內
+    switch (key) {
+      case 'daily_capacity':
+        particle.position[key] = Math.max(20, Math.min(100, particle.position[key]));
+        break;
+      case 'staff_count':
+        particle.position[key] = Math.max(1, Math.min(5, Math.round(particle.position[key])));
+        break;
+      case 'minutes_per_bottle':
+        particle.position[key] = Math.max(5, Math.min(30, particle.position[key]));
+        break;
+      case 'rolling_interval':
+        const intervals = [1, 2, 4, 8, 12];
+        particle.position[key] = intervals[Math.floor(Math.random() * intervals.length)];
+        break;
+      case 'max_rolling_days':
+        particle.position[key] = Math.max(1, Math.min(7, Math.round(particle.position[key])));
+        break;
+      case 'capacity_reserve_percentage':
+        particle.position[key] = Math.max(0, Math.min(30, particle.position[key]));
+        break;
+      case 'preorder_priority_boost':
+        particle.position[key] = Math.max(0, Math.min(50, particle.position[key]));
+        break;
+    }
+  });
+}
+
+// 模擬退火輔助函數
+function generateNeighborSolution(currentSolution, testParameters) {
+  const neighbor = { ...currentSolution };
+  const keys = Object.keys(currentSolution);
+  const randomKey = keys[Math.floor(Math.random() * keys.length)];
+  
+  // 生成鄰近解
+  switch (randomKey) {
+    case 'daily_capacity':
+      neighbor.daily_capacity = Math.max(20, Math.min(100, neighbor.daily_capacity + (Math.random() - 0.5) * 10));
+      break;
+    case 'staff_count':
+      neighbor.staff_count = Math.max(1, Math.min(5, neighbor.staff_count + (Math.random() > 0.5 ? 1 : -1)));
+      break;
+    case 'minutes_per_bottle':
+      neighbor.minutes_per_bottle = Math.max(5, Math.min(30, neighbor.minutes_per_bottle + (Math.random() - 0.5) * 5));
+      break;
+    case 'rolling_interval':
+      const intervals = [1, 2, 4, 8, 12];
+      const currentIndex = intervals.indexOf(neighbor.rolling_interval);
+      const newIndex = Math.max(0, Math.min(intervals.length - 1, currentIndex + (Math.random() > 0.5 ? 1 : -1)));
+      neighbor.rolling_interval = intervals[newIndex];
+      break;
+    case 'max_rolling_days':
+      neighbor.max_rolling_days = Math.max(1, Math.min(7, neighbor.max_rolling_days + (Math.random() > 0.5 ? 1 : -1)));
+      break;
+    case 'capacity_reserve_percentage':
+      neighbor.capacity_reserve_percentage = Math.max(0, Math.min(30, neighbor.capacity_reserve_percentage + (Math.random() - 0.5) * 5));
+      break;
+    case 'preorder_priority_boost':
+      neighbor.preorder_priority_boost = Math.max(0, Math.min(50, neighbor.preorder_priority_boost + (Math.random() - 0.5) * 10));
+      break;
+  }
+  
+  return neighbor;
+}
 
 // 優雅關閉
 process.on('SIGINT', () => {

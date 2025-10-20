@@ -7,6 +7,9 @@ const apiConfig = process.env.NODE_ENV === 'production'
   ? require('./services/api.production') 
   : require('./services/api');
 
+console.log('🔧 POS系統環境:', process.env.NODE_ENV);
+console.log('🔧 使用API配置:', apiConfig);
+
 const { productAPI, orderAPI } = apiConfig;
 
 function App() {

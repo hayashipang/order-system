@@ -2,6 +2,7 @@ import axios from 'axios';
 
 // API 基礎 URL - 地端開發環境
 const API_BASE_URL = 'http://localhost:3001';
+console.log('🔧 POS API配置:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
