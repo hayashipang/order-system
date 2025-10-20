@@ -4176,34 +4176,7 @@ const AdminPanel = ({ user }) => {
             </div>
           </div>
 
-          {/* 操作按鈕 */}
-          <div style={{ textAlign: 'center' }}>
-            <button
-              onClick={() => setIsParameterTestModalOpen(true)}
-              style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: 'white',
-                border: 'none',
-                padding: '15px 30px',
-                borderRadius: '25px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
-              }}
-            >
-              🚀 開始參數測試
-            </button>
-          </div>
+          {/* 操作按鈕已移除 */}
 
           {/* 使用說明 */}
           <div style={{
