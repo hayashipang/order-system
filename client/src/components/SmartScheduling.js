@@ -37,7 +37,7 @@ const SmartScheduling = () => {
     try {
       setLoading(true);
       setError('');
-      const response = await axios.put(`${config.API_BASE_URL}/api/scheduling/config`, schedulingConfig);
+      await axios.put(`${config.API_BASE_URL}/api/scheduling/config`, schedulingConfig);
       setSuccess('排程配置更新成功！');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
