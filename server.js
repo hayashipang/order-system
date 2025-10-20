@@ -2145,6 +2145,7 @@ app.get('/api/scheduling/config', checkDatabaseReady, (req, res) => {
         min_stock: 10,            // 最低庫存
         working_hours: 8,         // 工作時數
         break_time: 60,           // 休息時間（分鐘）
+        enable_inventory_replenishment: false, // 是否啟用庫存補貨
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -2236,14 +2237,32 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
 // 智能排程生成函數
 function generateSmartSchedule(targetDate, config) {
   try {
+    // 分析當日訂單需求
+    const dailyOrderDemand = analyzeDailyOrderDemand(targetDate);
+    
+    // 如果沒有當日訂單，不生成任何排程
+    if (dailyOrderDemand.length === 0) {
+      return {
+        planned_production: [],
+        time_schedule: [],
+        summary: {
+          total_bottles: 0,
+          efficiency: '0%',
+          estimated_time: '0分鐘',
+          remaining_capacity: config.daily_capacity
+        },
+        recommendations: ['今日無訂單，無需生產'],
+        inventory_analysis: [],
+        sales_trend: [],
+        daily_order_demand: []
+      };
+    }
+    
     // 分析庫存狀況
     const inventoryAnalysis = analyzeInventory();
     
     // 分析銷售趨勢
     const salesTrend = analyzeSalesTrend();
-    
-    // 分析當日訂單需求
-    const dailyOrderDemand = analyzeDailyOrderDemand(targetDate);
     
     // 生成生產計劃
     const productionPlan = generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand, config);
@@ -2426,8 +2445,8 @@ function generateProductionPlan(inventoryAnalysis, salesTrend, dailyOrderDemand,
     }
   });
   
-  // 如果還有剩餘產能，處理庫存補貨需求
-  if (remainingCapacity > 0) {
+  // 如果還有剩餘產能，且配置允許庫存補貨，才處理庫存補貨需求
+  if (remainingCapacity > 0 && config.enable_inventory_replenishment !== false) {
     inventoryAnalysis.forEach(item => {
       if (remainingCapacity <= 0) return;
       
