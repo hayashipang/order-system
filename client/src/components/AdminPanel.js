@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import config from '../config';
-import SmartScheduling from './SmartScheduling';
-import ParameterTestModal from './ParameterTestModal';
 
 const AdminPanel = ({ user }) => {
   const [activeTab, setActiveTab] = useState(user?.role === 'kitchen' ? 'shipping-management' : 'new-order');
@@ -4065,19 +4063,7 @@ const AdminPanel = ({ user }) => {
               🏭 智能排程
             </button>
           )}
-          <button 
-            className={`nav-button ${activeTab === 'parameter-test' ? 'active' : ''}`}
-            onClick={() => setActiveTab('parameter-test')}
-            style={{ 
-              backgroundColor: activeTab === 'parameter-test' ? '#4facfe' : '#00f2fe', 
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            🧪 參數測試
-          </button>
+          {/* 參數測試功能已移除 */}
           <button 
             className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}
             onClick={() => setActiveTab('shipping-management')}
@@ -4114,8 +4100,9 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
       {activeTab === 'inventory-management' && renderInventoryManagement()}
-      {(process.env.NODE_ENV === 'production' || process.env.REACT_APP_HIDE_SCHEDULING === 'true') ? null : (activeTab === 'smart-scheduling' && <SmartScheduling />)}
-      {activeTab === 'parameter-test' && (
+      {/* 智能排程功能已移除 */}
+      {/* 參數測試內容已移除 */}
+      {false && (
         <div style={{ padding: '20px' }}>
           <div style={{ 
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
