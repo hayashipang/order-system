@@ -21,6 +21,10 @@ const ProductManagement = () => {
   const [shippingFee, setShippingFee] = useState(120);
   const [editingShippingFee, setEditingShippingFee] = useState(false);
 
+  // 產品優先順序設定狀態
+  const [showPriorityModal, setShowPriorityModal] = useState(false);
+  const [productPriority, setProductPriority] = useState([]);
+
   useEffect(() => {
     fetchProducts();
     fetchShippingFee();

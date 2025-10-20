@@ -933,8 +933,29 @@ const KitchenDashboard = () => {
                       🎯 智能排程生成
                     </h4>
                     <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
-                      根據當前訂單和優先順序，生成最優製作排程
+                      根據指定日期的訂單和優先順序，生成最優製作排程
                     </p>
+                    
+                    {/* 日期選擇器 */}
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#2c3e50' }}>
+                        選擇日期：
+                      </label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: '2px solid #e9ecef',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          width: '100%',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    
                     <button
                       style={{
                         padding: '12px 24px',
@@ -1481,6 +1502,25 @@ const KitchenDashboard = () => {
               <p style={{ color: '#666', fontSize: '14px', marginBottom: '15px' }}>
                 設定產品製作優先順序，數字越小優先級越高。拖拽可調整順序。
               </p>
+              <button
+                onClick={() => {
+                  const sortedPriority = [...productPriority].sort((a, b) => a.priority - b.priority);
+                  setProductPriority(sortedPriority);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  marginBottom: '10px'
+                }}
+              >
+                🔄 自動排序（優先順序1置頂）
+              </button>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
@@ -1593,11 +1633,18 @@ const KitchenDashboard = () => {
               <button
                 onClick={async () => {
                   try {
+                    // 自動重新排序：優先順序1置頂
+                    const sortedPriority = [...productPriority].sort((a, b) => a.priority - b.priority);
+                    
                     await axios.put(`${config.apiUrl}/api/products/priority`, {
-                      priority_settings: productPriority
+                      priority_settings: sortedPriority
                     });
+                    
+                    // 重新載入優先順序設定
+                    await fetchProductPriority();
+                    
                     setShowPriorityModal(false);
-                    alert('產品優先順序更新成功！');
+                    alert('產品優先順序更新成功！已自動排序。');
                   } catch (error) {
                     alert('更新失敗: ' + error.message);
                   }
