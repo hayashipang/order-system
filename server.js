@@ -2133,6 +2133,69 @@ app.get('/api/shared/reports/daily/:date', checkDatabaseReady, (req, res) => {
   }
 });
 
+// 智能排程配置管理
+app.get('/api/scheduling/config', checkDatabaseReady, (req, res) => {
+  try {
+    // 初始化排程配置（如果不存在）
+    if (!db.scheduling_config) {
+      db.scheduling_config = {
+        daily_capacity: 40,        // 日產能
+        staff_count: 1,           // 人力數量
+        minutes_per_bottle: 1.5,  // 每瓶製作時間（分鐘）
+        min_stock: 10,            // 最低庫存
+        working_hours: 8,         // 工作時數
+        break_time: 60,           // 休息時間（分鐘）
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      saveData();
+    }
+    
+    res.json(db.scheduling_config);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新智能排程配置
+app.put('/api/scheduling/config', checkDatabaseReady, (req, res) => {
+  try {
+    const config = req.body;
+    
+    // 驗證配置參數
+    if (config.daily_capacity && (config.daily_capacity < 1 || config.daily_capacity > 200)) {
+      return res.status(400).json({ error: '日產能必須在1-200瓶之間' });
+    }
+    
+    if (config.staff_count && (config.staff_count < 1 || config.staff_count > 10)) {
+      return res.status(400).json({ error: '人力數量必須在1-10人之間' });
+    }
+    
+    if (config.minutes_per_bottle && (config.minutes_per_bottle < 0.5 || config.minutes_per_bottle > 10)) {
+      return res.status(400).json({ error: '每瓶製作時間必須在0.5-10分鐘之間' });
+    }
+    
+    // 更新配置
+    if (!db.scheduling_config) {
+      db.scheduling_config = {};
+    }
+    
+    Object.assign(db.scheduling_config, config, {
+      updated_at: new Date().toISOString()
+    });
+    
+    saveData();
+    
+    console.log('智能排程配置已更新:', db.scheduling_config);
+    res.json({ 
+      message: '配置更新成功', 
+      config: db.scheduling_config 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 智能排程 API
 app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
   try {
@@ -2142,97 +2205,265 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     console.log('智能排程API請求:', { date: targetDate });
     console.log('資料庫訂單數量:', db.orders ? db.orders.length : 0);
     
-    // 收集所有訂單（預訂訂單 + 現場訂單）
-    const allOrders = [];
+    // 獲取排程配置
+    const config = db.scheduling_config || {
+      daily_capacity: 40,
+      staff_count: 1,
+      minutes_per_bottle: 1.5,
+      min_stock: 10,
+      working_hours: 8,
+      break_time: 60
+    };
     
-    // 1. 收集預訂訂單
-    const preOrders = db.orders.filter(order => 
-      order.delivery_date === targetDate && order.status !== 'cancelled'
-    );
-    
-    preOrders.forEach(order => {
-      // 從 order_items 表中獲取訂單項目
-      const orderItems = db.order_items ? db.order_items.filter(item => item.order_id === order.id) : [];
-      
-      orderItems.forEach(item => {
-        allOrders.push({
-          order_id: order.id,
-          order_type: 'preorder',
-          customer_name: order.customer_name,
-          order_time: order.created_at || order.order_time,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          is_gift: item.is_gift || false,
-          priority: getProductPriority(item.product_name)
-        });
-      });
-    });
-    
-    // 2. 收集現場訂單
-    const walkinOrders = db.orders.filter(order => 
-      (order.order_type === 'walkin' || order.order_type === 'walk-in') && 
-      order.created_at && 
-      order.created_at.startsWith(targetDate) &&
-      order.status !== 'cancelled'
-    );
-    
-    walkinOrders.forEach(order => {
-      // 從 order_items 表中獲取訂單項目
-      const orderItems = db.order_items ? db.order_items.filter(item => item.order_id === order.id) : [];
-      
-      orderItems.forEach(item => {
-        allOrders.push({
-          order_id: order.id,
-          order_type: 'walkin',
-          customer_name: order.customer_name || '現場客戶',
-          order_time: order.created_at || order.order_time,
-          product_name: item.product_name,
-          quantity: item.quantity,
-          is_gift: item.is_gift || false,
-          priority: getProductPriority(item.product_name)
-        });
-      });
-    });
-    
-    // 3. 智能排序：先進先出 + 產品優先順序
-    const sortedOrders = allOrders.sort((a, b) => {
-      // 先按產品優先順序排序（數字越小優先級越高）
-      if (a.priority !== b.priority) {
-        return a.priority - b.priority;
-      }
-      // 相同優先順序時，按訂單時間排序（先進先出）
-      return new Date(a.order_time) - new Date(b.order_time);
-    });
-    
-    // 4. 按產品分組
-    const productGroups = {};
-    sortedOrders.forEach(order => {
-      if (!productGroups[order.product_name]) {
-        productGroups[order.product_name] = {
-          product_name: order.product_name,
-          priority: order.priority,
-          total_quantity: 0,
-          orders: []
-        };
-      }
-      productGroups[order.product_name].total_quantity += order.quantity;
-      productGroups[order.product_name].orders.push(order);
-    });
-    
-    // 5. 轉換為陣列並按優先順序排序
-    const schedulingResult = Object.values(productGroups).sort((a, b) => a.priority - b.priority);
+    // 智能排程分析
+    const scheduleAnalysis = generateSmartSchedule(targetDate, config);
     
     res.json({
       date: targetDate,
-      total_orders: allOrders.length,
-      total_products: schedulingResult.length,
-      scheduling: schedulingResult
+      config: config,
+      analysis: scheduleAnalysis,
+      orders: scheduleAnalysis.planned_production,
+      summary: scheduleAnalysis.summary,
+      recommendations: scheduleAnalysis.recommendations
     });
     
   } catch (error) {
+    console.error('智能排程API錯誤:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// 智能排程生成函數
+function generateSmartSchedule(targetDate, config) {
+  try {
+    // 分析庫存狀況
+    const inventoryAnalysis = analyzeInventory();
+    
+    // 分析銷售趨勢
+    const salesTrend = analyzeSalesTrend();
+    
+    // 生成生產計劃
+    const productionPlan = generateProductionPlan(inventoryAnalysis, salesTrend, config);
+    
+    // 計算時間安排
+    const timeSchedule = calculateTimeSchedule(productionPlan, config);
+    
+    // 生成建議
+    const recommendations = generateRecommendations(inventoryAnalysis, productionPlan, config);
+    
+    return {
+      planned_production: productionPlan,
+      time_schedule: timeSchedule,
+      summary: {
+        total_bottles: productionPlan.reduce((sum, item) => sum + item.quantity, 0),
+        efficiency: ((productionPlan.reduce((sum, item) => sum + item.quantity, 0) / config.daily_capacity) * 100).toFixed(1) + '%',
+        estimated_time: calculateTotalTime(productionPlan, config),
+        remaining_capacity: config.daily_capacity - productionPlan.reduce((sum, item) => sum + item.quantity, 0)
+      },
+      recommendations: recommendations,
+      inventory_analysis: inventoryAnalysis,
+      sales_trend: salesTrend
+    };
+  } catch (error) {
+    console.error('智能排程生成錯誤:', error);
+    return {
+      planned_production: [],
+      time_schedule: [],
+      summary: { total_bottles: 0, efficiency: '0%', estimated_time: '0分鐘', remaining_capacity: config.daily_capacity },
+      recommendations: ['排程生成失敗，請檢查系統配置'],
+      inventory_analysis: [],
+      sales_trend: []
+    };
+  }
+}
+
+// 分析庫存狀況
+function analyzeInventory() {
+  const analysis = [];
+  
+  db.products.forEach(product => {
+    const currentStock = product.current_stock || 0;
+    const minStock = db.scheduling_config?.min_stock || 10;
+    const priority = getProductPriority(product.name);
+    
+    const stockDeficit = Math.max(0, minStock - currentStock);
+    const urgencyScore = (stockDeficit * 2) + (priority ? (10 - priority) : 0);
+    
+    analysis.push({
+      product_id: product.id,
+      product_name: product.name,
+      current_stock: currentStock,
+      min_stock: minStock,
+      stock_deficit: stockDeficit,
+      priority: priority,
+      urgency_score: urgencyScore,
+      status: currentStock < minStock ? 'urgent' : currentStock < minStock * 1.5 ? 'warning' : 'normal'
+    });
+  });
+  
+  return analysis.sort((a, b) => b.urgency_score - a.urgency_score);
+}
+
+// 分析銷售趨勢
+function analyzeSalesTrend() {
+  const trend = [];
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  
+  db.products.forEach(product => {
+    const recentOrders = db.orders.filter(order => {
+      const orderDate = new Date(order.order_time || order.created_at);
+      return orderDate >= sevenDaysAgo && order.status !== 'cancelled';
+    });
+    
+    let totalSold = 0;
+    recentOrders.forEach(order => {
+      const items = db.order_items.filter(item => 
+        item.order_id === order.id && item.product_name === product.name
+      );
+      totalSold += items.reduce((sum, item) => sum + item.quantity, 0);
+    });
+    
+    trend.push({
+      product_id: product.id,
+      product_name: product.name,
+      weekly_sales: totalSold,
+      daily_average: (totalSold / 7).toFixed(1)
+    });
+  });
+  
+  return trend.sort((a, b) => b.weekly_sales - a.weekly_sales);
+}
+
+// 生成生產計劃
+function generateProductionPlan(inventoryAnalysis, salesTrend, config) {
+  const plan = [];
+  let remainingCapacity = config.daily_capacity;
+  
+  // 按緊急程度分配產能
+  inventoryAnalysis.forEach(item => {
+    if (remainingCapacity <= 0) return;
+    
+    const salesData = salesTrend.find(s => s.product_id === item.product_id);
+    const salesBoost = salesData ? Math.min(salesData.weekly_sales * 0.2, 10) : 0;
+    
+    const recommendedQuantity = Math.min(
+      item.stock_deficit + Math.max(5, salesBoost),
+      remainingCapacity,
+      config.daily_capacity
+    );
+    
+    if (recommendedQuantity > 0) {
+      plan.push({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: recommendedQuantity,
+        reason: getProductionReason(item, salesData),
+        priority: item.priority,
+        estimated_time: estimateProductionTime(recommendedQuantity, config)
+      });
+      
+      remainingCapacity -= recommendedQuantity;
+    }
+  });
+  
+  return plan;
+}
+
+// 獲取生產原因
+function getProductionReason(inventoryItem, salesData) {
+  if (inventoryItem.stock_deficit > 0) {
+    return `庫存不足，需補貨${inventoryItem.stock_deficit}瓶`;
+  } else if (salesData && salesData.weekly_sales > 0) {
+    return `銷售趨勢良好，預防性生產`;
+  } else {
+    return `維持基本庫存`;
+  }
+}
+
+// 估算生產時間
+function estimateProductionTime(quantity, config) {
+  const totalMinutes = quantity * config.minutes_per_bottle;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = Math.round(totalMinutes % 60);
+  
+  if (hours > 0) {
+    return `${hours}小時${minutes}分鐘`;
+  } else {
+    return `${minutes}分鐘`;
+  }
+}
+
+// 計算總時間
+function calculateTotalTime(productionPlan, config) {
+  const totalMinutes = productionPlan.reduce((sum, item) => {
+    const timeStr = item.estimated_time;
+    const minutes = parseInt(timeStr.match(/\d+/)[0]);
+    return sum + minutes;
+  }, 0);
+  
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  if (hours > 0) {
+    return `${hours}小時${minutes}分鐘`;
+  } else {
+    return `${minutes}分鐘`;
+  }
+}
+
+// 計算時間安排
+function calculateTimeSchedule(productionPlan, config) {
+  const schedule = [];
+  let currentTime = 9 * 60; // 9:00 AM 開始
+  
+  productionPlan.forEach((item, index) => {
+    const startTime = new Date();
+    startTime.setHours(Math.floor(currentTime / 60), currentTime % 60, 0, 0);
+    
+    const duration = item.quantity * config.minutes_per_bottle;
+    const endTime = new Date(startTime.getTime() + duration * 60000);
+    
+    schedule.push({
+      ...item,
+      start_time: startTime.toTimeString().slice(0, 5),
+      end_time: endTime.toTimeString().slice(0, 5),
+      duration_minutes: duration
+    });
+    
+    currentTime += duration + 10; // 10分鐘間隔
+  });
+  
+  return schedule;
+}
+
+// 生成建議
+function generateRecommendations(inventoryAnalysis, productionPlan, config) {
+  const recommendations = [];
+  
+  const totalPlanned = productionPlan.reduce((sum, item) => sum + item.quantity, 0);
+  const efficiency = (totalPlanned / config.daily_capacity) * 100;
+  
+  if (efficiency < 80) {
+    recommendations.push('💡 產能利用率較低，建議檢查產品需求預測');
+  }
+  
+  const urgentProducts = inventoryAnalysis.filter(item => item.status === 'urgent');
+  if (urgentProducts.length > 0) {
+    recommendations.push(`🚨 有${urgentProducts.length}種產品庫存不足，需優先處理`);
+  }
+  
+  if (config.staff_count === 1 && totalPlanned > 30) {
+    recommendations.push('⚠️ 單人作業負荷較重，建議考慮增加人力或優化流程');
+  }
+  
+  const highDemandProducts = inventoryAnalysis.filter(item => item.urgency_score > 20);
+  if (highDemandProducts.length > 0) {
+    recommendations.push('📈 部分產品需求旺盛，建議增加安全庫存');
+  }
+  
+  return recommendations;
+}
 
 // 輔助函數：取得產品優先順序
 function getProductPriority(productName) {
@@ -2309,6 +2540,8 @@ app.get('/', (req, res) => {
       'GET /api/products - 取得產品列表',
       'GET /api/products/priority - 取得產品優先順序設定',
       'PUT /api/products/priority - 更新產品優先順序設定',
+      'GET /api/scheduling/config - 取得智能排程配置',
+      'PUT /api/scheduling/config - 更新智能排程配置',
       'GET /api/scheduling/orders - 智能排程API',
       'GET /api/customers - 取得客戶列表',
       'GET /api/kitchen/production/:date - 取得廚房製作清單',

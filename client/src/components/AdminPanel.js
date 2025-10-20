@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import config from '../config';
+import SmartScheduling from './SmartScheduling';
 
 const AdminPanel = ({ user }) => {
   const [activeTab, setActiveTab] = useState(user?.role === 'kitchen' ? 'shipping-management' : 'new-order');
@@ -4046,6 +4047,19 @@ const AdminPanel = ({ user }) => {
             📦 庫存管理
           </button>
           <button 
+            className={`nav-button ${activeTab === 'smart-scheduling' ? 'active' : ''}`}
+            onClick={() => setActiveTab('smart-scheduling')}
+            style={{ 
+              backgroundColor: activeTab === 'smart-scheduling' ? '#4facfe' : '#00f2fe', 
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            🏭 智能排程
+          </button>
+          <button 
             className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}
             onClick={() => setActiveTab('shipping-management')}
             style={{ 
@@ -4081,6 +4095,7 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
       {activeTab === 'inventory-management' && renderInventoryManagement()}
+      {activeTab === 'smart-scheduling' && <SmartScheduling />}
       {activeTab === 'shipping-management' && renderShippingManagement()}
       {activeTab === 'edit-order' && renderEditOrderForm()}
     </div>
