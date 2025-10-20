@@ -13,7 +13,7 @@ const AdminPanel = ({ user }) => {
   const [success, setSuccess] = useState('');
 
   // 參數測試狀態
-  const [isParameterTestModalOpen, setIsParameterTestModalOpen] = useState(false);
+  // 參數測試功能已移除
 
   // 新增訂單表單狀態
   const [newOrder, setNewOrder] = useState({
