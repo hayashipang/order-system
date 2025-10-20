@@ -728,6 +728,15 @@ app.get('/api/kitchen/production/:date', (req, res) => {
   }
 });
 
+// 取得所有訂單
+app.get('/api/orders', checkDatabaseReady, (req, res) => {
+  try {
+    res.json(db.orders || []);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 取得客戶訂單清單 (按客戶分組)
 app.get('/api/orders/customers/:date', (req, res) => {
   const { date } = req.params;
@@ -2142,20 +2151,21 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     );
     
     preOrders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
+      // 從 order_items 表中獲取訂單項目
+      const orderItems = db.order_items ? db.order_items.filter(item => item.order_id === order.id) : [];
+      
+      orderItems.forEach(item => {
         allOrders.push({
           order_id: order.id,
           order_type: 'preorder',
           customer_name: order.customer_name,
-          order_time: order.created_at,
+          order_time: order.created_at || order.order_time,
           product_name: item.product_name,
           quantity: item.quantity,
           is_gift: item.is_gift || false,
           priority: getProductPriority(item.product_name)
         });
-        });
-      }
+      });
     });
     
     // 2. 收集現場訂單
@@ -2167,20 +2177,21 @@ app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
     );
     
     walkinOrders.forEach(order => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach(item => {
+      // 從 order_items 表中獲取訂單項目
+      const orderItems = db.order_items ? db.order_items.filter(item => item.order_id === order.id) : [];
+      
+      orderItems.forEach(item => {
         allOrders.push({
           order_id: order.id,
           order_type: 'walkin',
           customer_name: order.customer_name || '現場客戶',
-          order_time: order.created_at,
+          order_time: order.created_at || order.order_time,
           product_name: item.product_name,
           quantity: item.quantity,
           is_gift: item.is_gift || false,
           priority: getProductPriority(item.product_name)
         });
-        });
-      }
+      });
     });
     
     // 3. 智能排序：先進先出 + 產品優先順序
