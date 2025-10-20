@@ -4050,7 +4050,7 @@ const AdminPanel = ({ user }) => {
           >
             📦 庫存管理
           </button>
-          {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (
+          {(process.env.NODE_ENV === 'production' || process.env.REACT_APP_HIDE_SCHEDULING === 'true') ? null : (
             <button 
               className={`nav-button ${activeTab === 'smart-scheduling' ? 'active' : ''}`}
               onClick={() => setActiveTab('smart-scheduling')}
@@ -4114,7 +4114,7 @@ const AdminPanel = ({ user }) => {
       {activeTab === 'new-customer' && renderNewCustomerForm()}
       {activeTab === 'order-history' && renderOrderHistory()}
       {activeTab === 'inventory-management' && renderInventoryManagement()}
-      {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (activeTab === 'smart-scheduling' && <SmartScheduling />)}
+      {(process.env.NODE_ENV === 'production' || process.env.REACT_APP_HIDE_SCHEDULING === 'true') ? null : (activeTab === 'smart-scheduling' && <SmartScheduling />)}
       {activeTab === 'parameter-test' && (
         <div style={{ padding: '20px' }}>
           <div style={{ 

@@ -412,7 +412,7 @@ const KitchenDashboard = () => {
           >
             🏪 現場訂單
           </button>
-          {process.env.REACT_APP_HIDE_SCHEDULING === 'true' ? null : (
+          {(process.env.NODE_ENV === 'production' || process.env.REACT_APP_HIDE_SCHEDULING === 'true') ? null : (
             <button
               onClick={() => setActiveTab('scheduling')}
               style={{
