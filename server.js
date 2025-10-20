@@ -2394,7 +2394,7 @@ function analyzeDailyOrderDemand(targetDate) {
       });
     });
     
-  // 轉換為數組並按需求量排序
+  // 轉換為數組並按優先順序排序
   Object.values(productDemand).forEach(demandItem => {
     const product = db.products.find(p => p.name === demandItem.product_name);
     if (product) {
@@ -2409,7 +2409,8 @@ function analyzeDailyOrderDemand(targetDate) {
   });
   
   console.log('當日訂單需求:', demand);
-  return demand.sort((a, b) => b.daily_demand - a.daily_demand);
+  // 按產品優先順序排序（數字越小優先級越高）
+  return demand.sort((a, b) => a.priority - b.priority);
 }
 
 // 生成生產計劃
