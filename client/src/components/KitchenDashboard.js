@@ -1005,18 +1005,18 @@ const KitchenDashboard = () => {
                             </strong>
                           </div>
                           <div style={{ fontSize: '14px', color: '#666' }}>
-                            {schedulingData.date}
+                            {schedulingData.date || '今日'}
                           </div>
                         </div>
                         <div style={{ marginTop: '10px', display: 'flex', gap: '20px', fontSize: '14px' }}>
-                          <span>總訂單: <strong>{schedulingData.total_orders}</strong></span>
-                          <span>產品種類: <strong>{schedulingData.total_products}</strong></span>
+                          <span>總產量: <strong>{schedulingData.summary?.total_bottles || 0}瓶</strong></span>
+                          <span>產品種類: <strong>{schedulingData.orders?.length || 0}</strong></span>
                         </div>
                       </div>
 
                       {/* 排程列表 */}
                       <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                        {schedulingData.scheduling && schedulingData.scheduling.length > 0 ? schedulingData.scheduling.map((product, index) => (
+                        {schedulingData.orders && schedulingData.orders.length > 0 ? schedulingData.orders.map((product, index) => (
                           <div key={index} style={{
                             marginBottom: '15px',
                             padding: '15px',
@@ -1042,43 +1042,31 @@ const KitchenDashboard = () => {
                                 </h5>
                               </div>
                               <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#3498db' }}>
-                                {product.total_quantity} 瓶
+                                {product.quantity} 瓶
                               </div>
                             </div>
                             
-                            {/* 訂單詳情 */}
+                            {/* 生產詳情 */}
                             <div style={{ fontSize: '14px', color: '#666' }}>
                               <div style={{ marginBottom: '8px' }}>
-                                <strong>訂單詳情:</strong>
+                                <strong>生產詳情:</strong>
                               </div>
-                              {product.orders && product.orders.map((order, orderIndex) => (
-                                <div key={orderIndex} style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: '5px 10px',
-                                  backgroundColor: '#f8f9fa',
-                                  borderRadius: '4px',
-                                  marginBottom: '5px'
-                                }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{
-                                      backgroundColor: order.order_type === 'preorder' ? '#3498db' : '#e74c3c',
-                                      color: 'white',
-                                      padding: '2px 6px',
-                                      borderRadius: '8px',
-                                      fontSize: '10px'
-                                    }}>
-                                      {order.order_type === 'preorder' ? '預訂' : '現場'}
-                                    </span>
-                                    <span>訂單 #{order.order_id}</span>
-                                    <span>{order.customer_name}</span>
-                                  </div>
-                                  <div style={{ fontWeight: 'bold' }}>
-                                    {order.quantity} 瓶
-                                  </div>
+                              <div style={{
+                                padding: '10px',
+                                backgroundColor: '#f8f9fa',
+                                borderRadius: '4px',
+                                marginBottom: '5px'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                  <span><strong>原因:</strong> {product.reason}</span>
                                 </div>
-                              ))}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                  <span><strong>預估時間:</strong> {product.estimated_time}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span><strong>優先級:</strong> {product.priority}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )) : (
