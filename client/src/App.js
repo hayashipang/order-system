@@ -4,6 +4,7 @@ import KitchenDashboard from './components/KitchenDashboard';
 import CustomerOrders from './components/CustomerOrders';
 import AdminPanel from './components/AdminPanel';
 import ProductManagement from './components/ProductManagement';
+import OrderScheduling from './components/OrderScheduling';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,6 +43,8 @@ function App() {
           return <AdminPanel user={user} />;
         case 'products':
           return <ProductManagement />;
+        case 'scheduling':
+          return <OrderScheduling />;
         default:
           return <KitchenDashboard />;
       }
@@ -62,7 +65,13 @@ function App() {
           className={`nav-button ${currentPage === 'kitchen' ? 'active' : ''}`}
           onClick={() => setCurrentPage('kitchen')}
         >
-          廚房製作
+          訂單製作
+        </button>
+        <button 
+          className={`nav-button ${currentPage === 'scheduling' ? 'active' : ''}`}
+          onClick={() => setCurrentPage('scheduling')}
+        >
+          訂單排程
         </button>
         {isAdmin ? (
           <button 

@@ -1092,7 +1092,7 @@ const AdminPanel = ({ user }) => {
                 onChange={(e) => updateOrderItem(index, 'special_notes', e.target.value)}
               />
               <div className="subtotal-display">
-                小計: NT$ {(item.quantity * item.unit_price).toLocaleString()}
+                小計: NT$ {((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toLocaleString()}
               </div>
               {newOrder.items.length > 1 && (
                 <button
@@ -1142,7 +1142,7 @@ const AdminPanel = ({ user }) => {
               fontWeight: 'bold', 
               color: '#e74c3c' 
             }}>
-              訂單總計: NT$ {newOrder.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0).toLocaleString()}
+              訂單總計: NT$ {(newOrder.items || []).reduce((total, item) => total + ((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)), 0).toLocaleString()}
             </div>
           </div>
         </div>
@@ -1205,7 +1205,7 @@ const AdminPanel = ({ user }) => {
             fontWeight: 'bold', 
             color: '#e74c3c' 
           }}>
-            最終總計: NT$ {calculateTotalAmount().toLocaleString()}
+            最終總計: NT$ {(calculateTotalAmount() || 0).toLocaleString()}
           </div>
           
           {/* 顯示明細 */}
@@ -1215,19 +1215,19 @@ const AdminPanel = ({ user }) => {
             marginTop: '5px',
             lineHeight: '1.4'
           }}>
-            <div>產品總計: NT$ {newOrder.items.reduce((total, item) => total + (item.quantity * item.unit_price), 0).toLocaleString()}</div>
+            <div>產品總計: NT$ {(newOrder.items || []).reduce((total, item) => total + ((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)), 0).toLocaleString()}</div>
             
             {/* 信用卡手續費 */}
             {calculateCreditCardFee() > 0 && (
               <div style={{ color: '#e67e22', fontWeight: 'bold' }}>
-                💳 信用卡手續費扣除 (2%): NT$ {calculateCreditCardFee().toLocaleString()}
+                💳 信用卡手續費扣除 (2%): NT$ {(calculateCreditCardFee() || 0).toLocaleString()}
               </div>
             )}
             
             {/* 蝦皮費用 */}
             {calculateShopeeFee() > 0 && (
               <div style={{ color: '#e74c3c', fontWeight: 'bold' }}>
-                🛒 蝦皮訂單費用扣除 (7.5%): NT$ {calculateShopeeFee().toLocaleString()}
+                🛒 蝦皮訂單費用扣除 (7.5%): NT$ {(calculateShopeeFee() || 0).toLocaleString()}
               </div>
             )}
             
@@ -3868,7 +3868,7 @@ const AdminPanel = ({ user }) => {
                         </span>
                       </td>
                       <td style={{ padding: '15px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
-                        {new Date(product.updated_at).toLocaleString('zh-TW')}
+                        {product.updated_at ? new Date(product.updated_at).toLocaleString('zh-TW') : '-'}
                       </td>
                     </tr>
                   );
@@ -3951,7 +3951,7 @@ const AdminPanel = ({ user }) => {
                     </td>
                     <td style={{ padding: '12px', color: '#666' }}>{transaction.notes || '-'}</td>
                     <td style={{ padding: '12px', textAlign: 'center', fontSize: '12px', color: '#666' }}>
-                      {new Date(transaction.transaction_date).toLocaleString('zh-TW')}
+                      {transaction.transaction_date ? new Date(transaction.transaction_date).toLocaleString('zh-TW') : '-'}
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button

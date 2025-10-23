@@ -214,6 +214,64 @@ app.get('/api/products', checkDatabaseReady, (req, res) => {
   res.json(db.products);
 });
 
+// 取得所有訂單（用於排程）
+app.get('/api/orders', checkDatabaseReady, (req, res) => {
+  try {
+    // 為每個訂單添加客戶名稱
+    const ordersWithCustomer = db.orders.map(order => {
+      const customer = db.customers.find(c => c.id === order.customer_id);
+      return {
+        ...order,
+        customer_name: customer ? customer.name : '現場訂單'
+      };
+    });
+    res.json(ordersWithCustomer);
+  } catch (error) {
+    res.status(500).json({ error: '取得訂單失敗' });
+  }
+});
+
+// 儲存排程設定
+app.post('/api/scheduling/save', (req, res) => {
+  try {
+    const { orders, selectedOrders, productionDate } = req.body;
+    
+    // 初始化排程數據結構
+    if (!db.scheduling) {
+      db.scheduling = {};
+    }
+    
+    // 儲存排程設定
+    db.scheduling[productionDate] = {
+      orders: orders,
+      selectedOrders: selectedOrders,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    saveData();
+    res.json({ success: true, message: '排程已儲存' });
+  } catch (error) {
+    res.status(500).json({ error: '儲存排程失敗: ' + error.message });
+  }
+});
+
+// 取得排程設定
+app.get('/api/scheduling/:date', checkDatabaseReady, (req, res) => {
+  try {
+    const { date } = req.params;
+    const scheduling = db.scheduling && db.scheduling[date];
+    
+    if (scheduling) {
+      res.json(scheduling);
+    } else {
+      res.json({ orders: [], selectedOrders: [] });
+    }
+  } catch (error) {
+    res.status(500).json({ error: '取得排程失敗' });
+  }
+});
+
 // 取得產品優先順序設定
 app.get('/api/products/priority', checkDatabaseReady, (req, res) => {
   try {

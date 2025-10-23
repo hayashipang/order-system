@@ -16,170 +16,81 @@
   "customers": [
     {
       "id": 1,
-      "name": "安安",
-      "phone": "123",
-      "address": "123",
-      "family_mart_address": "",
-      "source": "蝦皮訂購",
-      "payment_method": "信用卡",
-      "order_number": "123"
+      "name": "測試客戶",
+      "phone": "0912345678",
+      "address": "台北市",
+      "source": "網路"
     }
   ],
   "products": [
     {
       "id": 1,
-      "name": "即飲瓶-元氣綠",
-      "price": 134,
-      "description": "綠色蔬果系列，富含維生素",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.254Z",
-      "updated_at": "2025-10-01T14:51:09.797Z"
+      "name": "蔬果73-元氣綠",
+      "price": 120,
+      "description": "綠色蔬果系列，富含維生素"
     },
     {
       "id": 2,
-      "name": "即飲瓶-活力紅",
-      "price": 134,
-      "description": "紅色蔬果系列，抗氧化",
-      "current_stock": 20,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.258Z",
-      "updated_at": "2025-10-01T14:51:45.920Z"
+      "name": "蔬果73-活力紅",
+      "price": 120,
+      "description": "紅色蔬果系列，抗氧化"
     },
     {
       "id": 3,
-      "name": "即飲瓶-亮妍莓",
-      "price": 134,
-      "description": "莓果系列，美容養顏",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.261Z",
-      "updated_at": "2025-10-01T14:51:45.928Z"
+      "name": "蔬果73-亮妍莓",
+      "price": 130,
+      "description": "莓果系列，美容養顏"
     },
     {
       "id": 4,
-      "name": "即飲瓶-幸運果",
-      "price": 134,
-      "description": "黃橘色蔬果系列，提升免疫力",
-      "current_stock": 18,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.265Z",
-      "updated_at": "2025-10-01T14:51:39.725Z"
+      "name": "蔬菜73-幸運果",
+      "price": 120,
+      "description": "黃橘色蔬果系列，提升免疫力"
     },
     {
       "id": 5,
-      "name": "即飲瓶-順暢綠",
-      "price": 134,
-      "description": "100% 綠色蔬菜，促進消化",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.268Z",
-      "updated_at": "2025-10-01T14:51:39.732Z"
+      "name": "蔬菜100-順暢綠",
+      "price": 150,
+      "description": "100% 綠色蔬菜，促進消化"
     },
     {
       "id": 6,
-      "name": "即飲瓶-養生黑",
-      "price": 134,
-      "description": "100% 黑色養生，滋補強身",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.272Z",
-      "updated_at": "2025-10-01T14:51:45.938Z"
+      "name": "蔬菜100-養生黑",
+      "price": 160,
+      "description": "100% 黑色養生，滋補強身"
     },
     {
       "id": 7,
-      "name": "即飲瓶-養眼晶",
-      "price": 134,
-      "description": "100% 有機枸杞，護眼明目",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.276Z",
-      "updated_at": "2025-10-01T14:51:16.353Z"
+      "name": "蔬菜100-養眼晶(有機枸杞)",
+      "price": 180,
+      "description": "100% 有機枸杞，護眼明目"
     },
     {
       "id": 8,
-      "name": "鮮凍包-順暢綠",
-      "price": 134,
-      "description": "100% 綠色蔬菜，促進消化",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.280Z",
-      "updated_at": "2025-10-01T14:51:16.360Z"
-    },
-    {
-      "id": 9,
-      "name": "鮮凍包-養生黑",
-      "price": 134,
-      "description": "100% 黑色養生，滋補強身",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.284Z",
-      "updated_at": "2025-10-01T14:51:16.367Z"
-    },
-    {
-      "id": 10,
-      "name": "鮮凍包-養眼晶",
-      "price": 139,
-      "description": "100% 有機枸杞，護眼明目",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.288Z",
-      "updated_at": "2025-10-01T14:51:16.374Z"
-    },
-    {
-      "id": 11,
-      "name": "鮮凍包-元氣綠",
-      "price": 134,
-      "description": "綠色蔬果系列，富含維生素",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.292Z",
-      "updated_at": "2025-10-01T14:51:16.381Z"
-    },
-    {
-      "id": 12,
-      "name": "鮮凍包-活力紅",
-      "price": 134,
-      "description": "紅色蔬果系列，抗氧化",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.296Z",
-      "updated_at": "2025-10-01T14:51:16.388Z"
-    },
-    {
-      "id": 13,
-      "name": "鮮凍包-亮妍莓",
-      "price": 134,
-      "description": "莓果系列，美容養顏",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.300Z",
-      "updated_at": "2025-10-01T14:51:16.395Z"
-    },
-    {
-      "id": 14,
-      "name": "鮮凍包-幸運果",
-      "price": 134,
-      "description": "黃橘色蔬果系列，提升免疫力",
-      "current_stock": 0,
-      "min_stock": 10,
-      "created_at": "2025-10-01T12:27:55.304Z",
-      "updated_at": "2025-10-01T14:51:16.402Z"
+      "name": "蔬菜100-法國黑巧70",
+      "price": 200,
+      "description": "100% 法國黑巧克力，濃郁香醇"
     }
   ],
-  "orders": [],
-  "scheduling_config": {
-    "enabled": true,
-    "production_start_time": "08:00",
-    "production_end_time": "18:00",
-    "max_daily_orders": 50,
-    "buffer_time_minutes": 30
-  },
-  "product_priority": [
+  "orders": [
     {
-      "product_id": 1,
-      "priority": 1,
-      "reason": "熱門商品"
+      "id": 1,
+      "customer_id": 1,
+      "order_date": "2025-09-22",
+      "delivery_date": "2025-09-22",
+      "status": "completed",
+      "notes": ""
+    }
+  ],
+  "order_items": [
+    {
+      "id": 1,
+      "order_id": 1,
+      "product_name": "蔬果73-亮妍莓",
+      "quantity": 1,
+      "unit_price": 130,
+      "special_notes": "",
+      "status": "completed"
     }
   ]
 }
