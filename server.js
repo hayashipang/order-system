@@ -65,14 +65,7 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 
-// 靜態檔案處理
-if (process.env.NODE_ENV === 'production') {
-  // 在 Vercel 上，靜態檔案由 Vercel 處理
-  app.use(express.static(path.join(__dirname, 'client/build')));
-} else {
-  // 本地開發
-  app.use(express.static(path.join(__dirname, 'client/build')));
-}
+// 靜態檔案處理將在API路由之後添加
 
 // JSON 檔案資料庫 - 資料檔案分離架構
 const TEMPLATE_DATA_FILE = path.join(__dirname, 'data.json');  // 範本資料檔案 (會被 Git 追蹤)
@@ -2937,10 +2930,20 @@ function syncProductPriority() {
 }
 
 // 根路徑回應
+// 健康檢查端點
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.get('/', (req, res) => {
   res.json({ 
     message: '訂單管理系統 API 運行中！', 
     version: '1.0.0',
+    status: 'running',
     endpoints: [
       'GET /api/products - 取得產品列表',
       'GET /api/products/priority - 取得產品優先順序設定',
@@ -2963,6 +2966,120 @@ app.get('/', (req, res) => {
 });
 
 // 服務靜態文件
+
+// v3 訂單排程API端點
+app.get("/api/scheduling/unscheduled-orders", checkDatabaseReady, (req, res) => {
+  try {
+    const unscheduledOrders = db.orders.filter(order => 
+      order.manufacturing_date === null && 
+      order.status !== "completed" &&
+      order.status !== "cancelled"
+    );
+    
+    unscheduledOrders.sort((a, b) => (a.production_order || 0) - (b.production_order || 0));
+    
+    res.json(unscheduledOrders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/scheduling/orders/:id/manufacturing-date", checkDatabaseReady, (req, res) => {
+  const { id } = req.params;
+  const { manufacturing_date } = req.body;
+  
+  try {
+    const orderIndex = db.orders.findIndex(o => o.id === parseInt(id));
+    if (orderIndex === -1) {
+      res.status(404).json({ error: "訂單不存在" });
+      return;
+    }
+    
+    db.orders[orderIndex].manufacturing_date = manufacturing_date;
+    db.orders[orderIndex].updated_at = new Date().toISOString();
+    
+    saveData();
+    res.json({ message: "製造日期更新成功", order: db.orders[orderIndex] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/scheduling/orders/:id/production-order", checkDatabaseReady, (req, res) => {
+  const { id } = req.params;
+  const { production_order } = req.body;
+  
+  try {
+    const orderIndex = db.orders.findIndex(o => o.id === parseInt(id));
+    if (orderIndex === -1) {
+      res.status(404).json({ error: "訂單不存在" });
+      return;
+    }
+    
+    db.orders[orderIndex].production_order = production_order;
+    db.orders[orderIndex].updated_at = new Date().toISOString();
+    
+    saveData();
+    res.json({ message: "生產順序更新成功", order: db.orders[orderIndex] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/scheduling/orders/batch-production-order", checkDatabaseReady, (req, res) => {
+  const { orders } = req.body;
+  
+  try {
+    orders.forEach(({ id, production_order }) => {
+      const orderIndex = db.orders.findIndex(o => o.id === parseInt(id));
+      if (orderIndex !== -1) {
+        db.orders[orderIndex].production_order = production_order;
+        db.orders[orderIndex].updated_at = new Date().toISOString();
+      }
+    });
+    
+    saveData();
+    res.json({ message: "批量更新生產順序成功" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/scheduling/manufacturing/:date", checkDatabaseReady, (req, res) => {
+  const { date } = req.params;
+  
+  try {
+    const manufacturingOrders = db.orders.filter(order => 
+      order.manufacturing_date === date && 
+      order.status !== "completed" &&
+      order.status !== "cancelled"
+    );
+    
+    manufacturingOrders.sort((a, b) => (a.production_order || 0) - (b.production_order || 0));
+    
+    res.json(manufacturingOrders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/scheduling/orders/:id/details", checkDatabaseReady, (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const order = db.orders.find(o => o.id === parseInt(id));
+    if (!order) {
+      res.status(404).json({ error: "訂單不存在" });
+      return;
+    }
+    
+    const orderItems = db.order_items.filter(item => item.order_id === parseInt(id));
+    
+    res.json({ ...order, items: orderItems });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
