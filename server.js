@@ -1490,7 +1490,7 @@ app.post('/api/orders', (req, res) => {
 
     // 計算信用卡手續費
     let creditCardFee = 0;
-    if (customer && customer.payment_method === '信用卡') {
+    if (customer && customer.payment_method === '信用卡' && items && Array.isArray(items)) {
       // 計算付費產品總金額（排除贈品）
       const paidItemsTotal = items
         .filter(item => !item.is_gift)
@@ -1525,7 +1525,7 @@ app.post('/api/orders', (req, res) => {
     }
     items.forEach(item => {
       const newItem = {
-        id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
+        id: (db.order_items && db.order_items.length > 0) ? Math.max(...db.order_items.map(oi => oi.id), 0) + 1 : 1,
         order_id: newOrder.id,
         product_name: item.product_name,
         quantity: parseInt(item.quantity),
@@ -1543,7 +1543,7 @@ app.post('/api/orders', (req, res) => {
       id: newOrder.id, 
       message: '訂單建立成功',
       credit_card_fee: creditCardFee,
-      total_amount: items.reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0) + (shipping_fee || 0) - creditCardFee
+      total_amount: (items || []).reduce((total, item) => total + (parseFloat(item.unit_price) * parseInt(item.quantity)), 0) + (shipping_fee || 0) - creditCardFee
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1600,7 +1600,7 @@ app.put('/api/orders/:id', (req, res) => {
     // 新增新的訂單項目
     items.forEach(item => {
       const newItem = {
-        id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
+        id: (db.order_items && db.order_items.length > 0) ? Math.max(...db.order_items.map(oi => oi.id), 0) + 1 : 1,
         order_id: parseInt(id),
         product_name: item.product_name,
         quantity: parseInt(item.quantity),
@@ -1978,7 +1978,7 @@ app.post('/api/shared/pos-orders', checkDatabaseReady, (req, res) => {
     // 新增訂單項目
     items.forEach(item => {
       const newItem = {
-        id: Math.max(...db.order_items.map(oi => oi.id), 0) + 1,
+        id: (db.order_items && db.order_items.length > 0) ? Math.max(...db.order_items.map(oi => oi.id), 0) + 1 : 1,
         order_id: newOrder.id,
         product_name: item.product_name,
         quantity: parseInt(item.quantity),
