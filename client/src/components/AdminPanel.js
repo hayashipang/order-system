@@ -3034,7 +3034,7 @@ const AdminPanel = ({ user }) => {
     const confirmMessage = `確定要刪除符合當前篩選條件的所有訂單嗎？\n\n` +
       `此操作無法復原！\n\n` +
       `篩選條件：\n` +
-      `${historyFilters.customer_id ? `客戶：${filteredHistoryCustomers.find(c => c.id == historyFilters.customer_id)?.name || '已選客戶'}\n` : ''}` +
+      `${historyFilters.customer_id ? `客戶：${filteredHistoryCustomers.find(c => c.id === parseInt(historyFilters.customer_id))?.name || '已選客戶'}\n` : ''}` +
       `${historyFilters.order_type ? `訂單類型：${historyFilters.order_type === 'online' ? '網路訂單' : '現場銷售'}\n` : ''}` +
       `${historyFilters.start_date ? `開始日期：${historyFilters.start_date}\n` : ''}` +
       `${historyFilters.end_date ? `結束日期：${historyFilters.end_date}\n` : ''}` +
