@@ -4,14 +4,10 @@
   "outputDirectory": "client/build",
   "installCommand": "npm install && cd client && npm install",
   "framework": null,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/static/(.*)",
-      "dest": "/client/build/static/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/client/build/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
