@@ -8,7 +8,8 @@ import cloudConfig from './config.cloud.js';
 const isLocalDev = window.location.hostname === 'localhost' || 
                    window.location.hostname === '127.0.0.1' || 
                    window.location.hostname === '';
-const useCloud = !isLocalDev && process.env.REACT_APP_FORCE_CLOUD === 'true';
+// 如果不是本地開發環境，則使用雲端配置（自動判斷）
+const useCloud = !isLocalDev || process.env.REACT_APP_FORCE_CLOUD === 'true';
 const config = useCloud ? cloudConfig : localConfig;
 
 
