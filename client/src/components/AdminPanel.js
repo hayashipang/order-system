@@ -18,13 +18,15 @@ const AdminPanel = ({ user }) => {
   // 新增訂單表單狀態
   const [newOrder, setNewOrder] = useState({
     customer_id: '',
-    order_date: new Date().toISOString().split('T')[0],
-    delivery_date: new Date().toISOString().split('T')[0],
+    order_date: '',
+    delivery_date: '',
+    production_date: '',
     notes: '',
     items: [{ product_name: '', quantity: 1, unit_price: 0, special_notes: '', is_gift: false }],
     shipping_type: 'none', // 'none', 'paid', 'free'
     shipping_fee: 0
   });
+
 
   // 運費設定狀態
   const [shippingFee, setShippingFee] = useState(120);
@@ -35,18 +37,21 @@ const AdminPanel = ({ user }) => {
     phone: '',
     address: '',
     family_mart_address: '',
-    source: '直接來店訂購',
-    payment_method: '貨到付款',
+    source: '現場訂購',
+    payment_method: '面交付款',
     order_number: ''
   });
 
 
   // 訂單歷史查詢狀態
   const [orderHistory, setOrderHistory] = useState([]);
+  const [orderHistoryLoaded, setOrderHistoryLoaded] = useState(false); // 防重複載入
+  // ✅ 預設顯示今天的訂單
+  const today = new Date().toISOString().split('T')[0];
   const [historyFilters, setHistoryFilters] = useState({
     customer_id: '',
-    start_date: '',
-    end_date: '',
+    start_date: today, // ✅ 預設為今天
+    end_date: today,   // ✅ 預設為今天
     order_type: '' // 新增訂單類型篩選
   });
 
@@ -58,7 +63,7 @@ const AdminPanel = ({ user }) => {
   const [shippingOrders, setShippingOrders] = useState([]);
   const [shippingDate, setShippingDate] = useState(new Date().toISOString().split('T')[0]);
   const [weeklyShippingData, setWeeklyShippingData] = useState([]);
-  const [showWeeklyOverview, setShowWeeklyOverview] = useState(false);
+  const [showWeeklyOverview, setShowWeeklyOverview] = useState(true); // ✅ 預設顯示未來一週出貨概覽
 
   // 客戶搜尋狀態
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
@@ -107,6 +112,46 @@ const AdminPanel = ({ user }) => {
     fetchInventoryTransactions();
   }, []);
 
+  // 當切換到新增訂單頁面時，更新日期到當前日期
+  useEffect(() => {
+    if (activeTab === 'new-order') {
+      const today = new Date();
+      const todayStr = today.getFullYear() + '-' + 
+        String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(today.getDate()).padStart(2, '0');
+      console.log('🔄 更新新增訂單日期到:', todayStr);
+      setNewOrder(prev => ({
+        ...prev,
+        order_date: todayStr,
+        delivery_date: '',      // 不要自動塞今天
+        production_date: ''     // 不要自動塞
+      }));
+    }
+  }, [activeTab]);
+
+  // 組件載入時也更新日期（處理初始載入的情況）
+  useEffect(() => {
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + 
+      String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(today.getDate()).padStart(2, '0');
+    console.log('🔄 組件載入時更新日期到:', todayStr);
+    console.log('🔄 當前 newOrder 狀態:', newOrder);
+    setNewOrder(prev => {
+      const updated = {
+        ...prev,
+        order_date: todayStr,
+        delivery_date: '',      // 不要自動塞今天
+        production_date: ''     // 不要自動塞
+      };
+      console.log('🔄 更新後的 newOrder:', updated);
+      return updated;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // 移除強制更新日期的 useEffect，讓用戶可以手動編輯日期
+
   const fetchShippingFee = async () => {
     try {
       const response = await axios.get(`${config.apiUrl}/api/shipping-fee`);
@@ -128,6 +173,9 @@ const AdminPanel = ({ user }) => {
       console.log('出貨訂單查詢結果:', response.data);
       setShippingOrders(response.data.orders || []);
       setSuccess(`已載入 ${response.data.orders?.length || 0} 筆出貨訂單`);
+      
+      // ✅ 同時載入庫存數據，用於判斷是否可以出貨
+      await fetchInventoryData();
     } catch (err) {
       console.error('載入出貨訂單錯誤:', err);
       setError('載入出貨訂單失敗: ' + (err.response?.data?.error || err.message));
@@ -143,14 +191,20 @@ const AdminPanel = ({ user }) => {
     setSuccess('');
 
     try {
-      await axios.put(`${config.apiUrl}/api/orders/${orderId}/shipping-status`, { status });
-      setSuccess(`訂單狀態已更新為：${status === 'completed' ? '已出貨' : '待出貨'}`);
+      const response = await axios.put(`${config.apiUrl}/api/orders/${orderId}/shipping-status`, { status });
+      console.log('更新出貨狀態響應:', response.data);
+      setSuccess(`訂單狀態已更新為：${status === 'shipped' ? '已出貨' : '待出貨'}`);
       // 重新載入出貨訂單和週出貨概覽
       await fetchShippingOrders();
       if (showWeeklyOverview) {
         await fetchWeeklyShippingData();
       }
+      // ✅ 如果當前在訂單歷史頁面，也要重新載入訂單歷史
+      if (activeTab === 'order-history') {
+        await fetchOrderHistory(true); // 強制重新載入
+      }
     } catch (err) {
+      console.error('更新出貨狀態錯誤:', err);
       setError('更新出貨狀態失敗: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
@@ -315,7 +369,7 @@ const AdminPanel = ({ user }) => {
   // 庫存管理相關函數
   const fetchInventoryData = async () => {
     try {
-      const response = await axios.get(`${config.apiUrl}/api/inventory`);
+      const response = await axios.get(`${config.apiUrl}/api/inventory/scheduling`);
       setInventoryData(response.data);
     } catch (err) {
       setError('載入庫存資料失敗: ' + err.message);
@@ -422,6 +476,53 @@ const AdminPanel = ({ user }) => {
     }
   };
 
+  // 一鍵歸零：將所有產品庫存設置為0
+  const handleResetAllStock = async () => {
+    // 顯示確認視窗
+    const totalProducts = inventoryData.length;
+    const totalStock = inventoryData.reduce((sum, p) => sum + (p.current_stock || 0), 0);
+    
+    const confirmMessage = `確定要將所有產品的庫存歸零嗎？\n\n` +
+      `此操作無法復原！\n\n` +
+      `產品數量：${totalProducts} 個\n` +
+      `當前總庫存：${totalStock} 件\n\n` +
+      `請輸入「確認歸零」以繼續：`;
+    
+    const userInput = prompt(confirmMessage);
+    if (userInput !== '確認歸零') {
+      alert('已取消歸零操作');
+      return;
+    }
+
+    // 二次確認
+    if (!window.confirm('⚠️ 最後確認：您真的要將所有產品庫存歸零嗎？此操作無法復原！')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await axios.put(`${config.apiUrl}/api/products/reset-stock`);
+      
+      if (response.data.success) {
+        setSuccess(`✅ ${response.data.message}`);
+        // 重新載入庫存數據
+        await fetchInventoryData();
+        await fetchInventoryTransactions();
+        // 3秒後清除成功訊息
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError('歸零失敗：' + (response.data.message || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('庫存歸零錯誤:', error);
+      setError('歸零失敗：' + (error.response?.data?.error || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 開始編輯客戶
   const startEditCustomer = (customer) => {
     setEditingCustomer(customer);
@@ -502,7 +603,13 @@ const AdminPanel = ({ user }) => {
     }
   };
 
-  const fetchOrderHistory = async () => {
+  const fetchOrderHistory = async (forceReload = false) => {
+    // 防重複載入：如果已經載入過且不是強制重新載入，則跳過
+    if (orderHistoryLoaded && !forceReload) {
+      console.log('🔄 訂單歷史已載入，跳過重複載入');
+      return;
+    }
+
     setLoading(true);
     try {
       // 使用真正的 API 載入訂單歷史
@@ -516,8 +623,12 @@ const AdminPanel = ({ user }) => {
       console.log('載入訂單歷史 URL:', url);
       const response = await axios.get(url);
       console.log('訂單歷史 API 回應:', response.data);
-      console.log('訂單歷史數量:', response.data.length);
-      setOrderHistory(response.data);
+      
+      // ✅ 後端返回格式為 { orders: [...], count: ... }，需要正確解析
+      const data = response.data?.orders || (Array.isArray(response.data) ? response.data : []);
+      console.log('訂單歷史數量:', data.length);
+      setOrderHistory(data);
+      setOrderHistoryLoaded(true); // 標記為已載入
     } catch (err) {
       console.error('載入訂單歷史錯誤:', err);
       setError('載入訂單歷史失敗: ' + err.message);
@@ -527,13 +638,13 @@ const AdminPanel = ({ user }) => {
     }
   };
 
-  // 自動載入訂單歷史
+  // 自動載入訂單歷史 - 僅在初次載入時呼叫一次
   useEffect(() => {
-    if (activeTab === 'order-history') {
+    if (activeTab === 'order-history' && !orderHistoryLoaded) {
+      console.log('🔄 初次載入訂單歷史');
       fetchOrderHistory();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAddOrder = async (e) => {
     e.preventDefault();
@@ -564,8 +675,8 @@ const AdminPanel = ({ user }) => {
       const orderData = {
         ...newOrder,
         shipping_fee: finalShippingFee,
-        credit_card_fee: calculateCreditCardFee(),
-        shopee_fee: calculateShopeeFee()
+        credit_card_fee: calculateCreditCardFee(newOrder, customers),
+        shopee_fee: calculateShopeeFee(newOrder, customers)
       };
 
       // 使用真正的 API 建立訂單
@@ -573,12 +684,15 @@ const AdminPanel = ({ user }) => {
       setSuccess('訂單建立成功！');
       
       // 重置表單
+      const today = new Date().toISOString().split('T')[0];
+      console.log('🔄 表單重置，更新日期到:', today);
       setNewOrder({
         customer_id: '',
-        order_date: new Date().toISOString().split('T')[0],
-        delivery_date: new Date().toISOString().split('T')[0],
+        order_date: today,
+        delivery_date: '',      // 不要自動塞今天
+        production_date: '',    // 不要自動塞
         notes: '',
-        items: [{ product_name: '', quantity: 1, unit_price: 0, special_notes: '' }],
+        items: [{ product_name: '', quantity: 1, unit_price: 0, special_notes: '', is_gift: false }],
         shipping_type: 'none',
         shipping_fee: 0
       });
@@ -695,8 +809,8 @@ const AdminPanel = ({ user }) => {
       const orderData = {
         ...editOrderForm,
         shipping_fee: finalShippingFee,
-        credit_card_fee: calculateEditCreditCardFee(),
-        shopee_fee: calculateEditShopeeFee()
+        credit_card_fee: calculateEditCreditCardFee(editOrderForm, customers),
+        shopee_fee: calculateEditShopeeFee(editOrderForm, customers)
       };
 
       console.log('發送到後端的訂單資料:', orderData);
@@ -715,7 +829,8 @@ const AdminPanel = ({ user }) => {
         shipping_fee: 0
       });
       setActiveTab('order-history');
-      // 不自動載入，讓用戶主動查詢
+      // ✅ 更新後自動重新載入訂單歷史，確保表格顯示最新資料
+      await fetchOrderHistory(true); // 強制重新載入
     } catch (err) {
       console.error('更新訂單錯誤:', err);
       setError('更新訂單失敗: ' + (err.response?.data?.error || err.message));
@@ -739,7 +854,7 @@ const AdminPanel = ({ user }) => {
       setSuccess('訂單刪除成功！');
       
       // 重新載入訂單歷史
-      await fetchOrderHistory();
+      await fetchOrderHistory(true); // 強制重新載入
     } catch (err) {
       setError('刪除訂單失敗: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -979,23 +1094,67 @@ const AdminPanel = ({ user }) => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <div className="form-group">
             <label className="form-label">訂單日期</label>
-            <input
-              type="date"
-              className="form-input"
-              value={newOrder.order_date}
-              onChange={(e) => setNewOrder({ ...newOrder, order_date: e.target.value })}
-              required
-            />
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="date"
+                className="form-input"
+                value={newOrder.order_date}
+                onChange={(e) => setNewOrder({ ...newOrder, order_date: e.target.value })}
+                required
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  console.log('🔄 手動更新訂單日期到:', today);
+                  setNewOrder(prev => ({ ...prev, order_date: today }));
+                }}
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                📅 今天
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">交貨日期</label>
-            <input
-              type="date"
-              className="form-input"
-              value={newOrder.delivery_date}
-              onChange={(e) => setNewOrder({ ...newOrder, delivery_date: e.target.value })}
-              required
-            />
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="date"
+                className="form-input"
+                value={newOrder.delivery_date}
+                onChange={(e) => setNewOrder({ ...newOrder, delivery_date: e.target.value })}
+                required
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  console.log('🔄 手動更新交貨日期到:', today);
+                  setNewOrder(prev => ({ ...prev, delivery_date: today }));
+                }}
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#3498db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                📅 今天
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1047,15 +1206,19 @@ const AdminPanel = ({ user }) => {
                 className="form-select"
                 value={item.product_name}
                 onChange={(e) => {
-                  console.log('產品選擇變更:', e.target.value);
-                  const selectedProduct = products.find(p => p.name === e.target.value);
+                  const raw = e.target.value || '';
+                  console.log('產品選擇變更:', raw);
+                  const norm = raw.trim().toLowerCase();
+                  const selectedProduct = products.find(p => (p.name || '').trim().toLowerCase() === norm);
                   console.log('找到的產品:', selectedProduct);
-                  updateOrderItem(index, 'product_name', e.target.value);
-                  // 如果是贈送項目，保持價格為 -30，不要自動更新為產品價格
+                  // 設定產品名稱
+                  updateOrderItem(index, 'product_name', raw);
+                  // 一律從 1 開始（不依賴 current_stock）
+                  updateOrderItem(index, 'quantity', 1);
+                  // 如果是贈送項目，保持價格為 -30；否則帶入產品售價
                   if (selectedProduct && !item.is_gift) {
                     updateOrderItem(index, 'unit_price', selectedProduct.price);
                   }
-                  console.log('更新後的項目:', newOrder.items[index]);
                 }}
                 required
               >
@@ -1205,7 +1368,7 @@ const AdminPanel = ({ user }) => {
             fontWeight: 'bold', 
             color: '#e74c3c' 
           }}>
-            最終總計: NT$ {(calculateTotalAmount() || 0).toLocaleString()}
+            最終總計: NT$ {(calculateTotalAmount(newOrder, shippingFee, customers) || 0).toLocaleString()}
           </div>
           
           {/* 顯示明細 */}
@@ -1218,16 +1381,16 @@ const AdminPanel = ({ user }) => {
             <div>產品總計: NT$ {(newOrder.items || []).reduce((total, item) => total + ((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)), 0).toLocaleString()}</div>
             
             {/* 信用卡手續費 */}
-            {calculateCreditCardFee() > 0 && (
+            {calculateCreditCardFee(newOrder, customers) > 0 && (
               <div style={{ color: '#e67e22', fontWeight: 'bold' }}>
-                💳 信用卡手續費扣除 (2%): NT$ {(calculateCreditCardFee() || 0).toLocaleString()}
+                💳 信用卡手續費扣除 (2%): NT$ {(calculateCreditCardFee(newOrder, customers) || 0).toLocaleString()}
               </div>
             )}
             
             {/* 蝦皮費用 */}
-            {calculateShopeeFee() > 0 && (
+            {calculateShopeeFee(newOrder, customers) > 0 && (
               <div style={{ color: '#e74c3c', fontWeight: 'bold' }}>
-                🛒 蝦皮訂單費用扣除 (7.5%): NT$ {(calculateShopeeFee() || 0).toLocaleString()}
+                🛒 蝦皮訂單費用扣除 (7.5%): NT$ {(calculateShopeeFee(newOrder, customers) || 0).toLocaleString()}
               </div>
             )}
             
@@ -1292,13 +1455,13 @@ const AdminPanel = ({ user }) => {
         </div>
 
         <div className="form-group">
-          <label className="form-label">全家店名</label>
+          <label className="form-label">便利商店店名</label>
           <input
             type="text"
             className="form-input"
             value={newCustomer.family_mart_address}
             onChange={(e) => setNewCustomer({ ...newCustomer, family_mart_address: e.target.value })}
-            placeholder="請輸入全家店名"
+            placeholder="請輸入便利商店店名"
           />
         </div>
 
@@ -1310,13 +1473,10 @@ const AdminPanel = ({ user }) => {
             onChange={(e) => setNewCustomer({ ...newCustomer, source: e.target.value })}
             required
           >
-            <option value="直接來店訂購">直接來店訂購</option>
-            <option value="FB訂購">FB訂購</option>
-            <option value="IG訂購">IG訂購</option>
             <option value="蝦皮訂購">蝦皮訂購</option>
-            <option value="全家好賣訂購">全家好賣訂購</option>
-            <option value="7-11賣貨便訂購">7-11賣貨便訂購</option>
-            <option value="其他訂購">其他訂購</option>
+            <option value="網路訂購">網路訂購</option>
+            <option value="現場訂購">現場訂購</option>
+            <option value="親自送達">親自送達</option>
           </select>
         </div>
 
@@ -1328,10 +1488,10 @@ const AdminPanel = ({ user }) => {
             onChange={(e) => setNewCustomer({ ...newCustomer, payment_method: e.target.value })}
             required
           >
-            <option value="貨到付款">貨到付款</option>
-            <option value="信用卡">信用卡</option>
+            <option value="銀行匯款">銀行匯款</option>
+            <option value="面交付款">面交付款</option>
+            <option value="信用卡付款">信用卡付款</option>
             <option value="LinePay">LinePay</option>
-            <option value="現金">現金</option>
           </select>
         </div>
 
@@ -1868,7 +2028,12 @@ const AdminPanel = ({ user }) => {
           for (const item of data) {
             const { id: oldId, ...itemData } = item;
             const response = await axios.post(`${config.apiUrl}/api/customers`, itemData);
-            const newId = response.data.id;
+            // ✅ 處理不同的 API 響應格式（資料庫模式可能返回 { success: true, customer: {...} } 或直接返回客戶對象）
+            const newId = response.data.id || (response.data.customer && response.data.customer.id);
+            if (!newId) {
+              console.error('無法獲取新客戶ID:', response.data);
+              continue;
+            }
             newCustomerMappings.set(oldId, newId);
             console.log(`客戶 ${itemData.name}: 舊ID ${oldId} -> 新ID ${newId}`);
           }
@@ -2089,7 +2254,7 @@ const AdminPanel = ({ user }) => {
         // 重新載入資料
         await fetchCustomers();
         await fetchProducts();
-        await fetchOrderHistory();
+        await fetchOrderHistory(true); // 強制重新載入
         
         setSuccess(`${dataType} 資料上傳成功！`);
       } catch (err) {
@@ -2148,8 +2313,15 @@ const AdminPanel = ({ user }) => {
           }
           
           for (const customer of backupData.customers) {
-            const { id, ...customerData } = customer;
-            await axios.post(`${config.apiUrl}/api/customers`, customerData);
+            const { id: oldId, ...customerData } = customer;
+            const response = await axios.post(`${config.apiUrl}/api/customers`, customerData);
+            // ✅ 處理 API 響應格式（支援直接返回客戶對象或 { customer: {...} } 格式）
+            const newId = response.data.id || (response.data.customer && response.data.customer.id);
+            if (newId && oldId !== newId) {
+              console.log(`客戶 ${customerData.name}: 舊ID ${oldId} -> 新ID ${newId}`);
+            } else if (!newId) {
+              console.error(`無法獲取新客戶ID，響應:`, response.data);
+            }
           }
         }
         
@@ -2234,7 +2406,7 @@ const AdminPanel = ({ user }) => {
         // 重新載入資料
         await fetchCustomers();
         await fetchProducts();
-        await fetchOrderHistory();
+        await fetchOrderHistory(true); // 強制重新載入
         
         setSuccess(`批量上傳成功！包含: ${uploadTypes.join(', ')}`);
       } catch (err) {
@@ -2612,13 +2784,13 @@ const AdminPanel = ({ user }) => {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">全家店名</label>
+              <label className="form-label">便利商店店名</label>
               <input
                 type="text"
                 className="form-input"
                 value={editCustomerForm.family_mart_address}
                 onChange={(e) => setEditCustomerForm({ ...editCustomerForm, family_mart_address: e.target.value })}
-                placeholder="請輸入全家店名"
+                placeholder="請輸入便利商店店名"
               />
             </div>
             <div className="form-group">
@@ -2782,9 +2954,14 @@ const AdminPanel = ({ user }) => {
                       <button
                         className="button"
                         onClick={() => {
+                          const today = new Date().toISOString().split('T')[0];
+                          console.log('🔄 從客戶管理下單，更新日期到:', today);
                           setNewOrder({
                             ...newOrder,
-                            customer_id: customer.id
+                            customer_id: customer.id,
+                            order_date: today,
+                            delivery_date: '',      // 不要自動塞今天
+                            production_date: ''     // 不要自動塞
                           });
                           setActiveTab('new-order');
                         }}
@@ -2829,6 +3006,7 @@ const AdminPanel = ({ user }) => {
       if (historyFilters.customer_id) params.append('customer_id', historyFilters.customer_id);
       if (historyFilters.start_date) params.append('start_date', historyFilters.start_date);
       if (historyFilters.end_date) params.append('end_date', historyFilters.end_date);
+      if (historyFilters.order_type) params.append('order_type', historyFilters.order_type);
       
       const response = await fetch(`${config.apiUrl}/api/orders/history/export/csv?${params}`);
       if (response.ok) {
@@ -2847,6 +3025,60 @@ const AdminPanel = ({ user }) => {
     } catch (error) {
       console.error('匯出錯誤:', error);
       alert('匯出失敗，請稍後再試');
+    }
+  };
+
+  // 刪除歷史訂單（根據當前篩選條件）
+  const deleteOrderHistory = async () => {
+    // 顯示確認視窗
+    const confirmMessage = `確定要刪除符合當前篩選條件的所有訂單嗎？\n\n` +
+      `此操作無法復原！\n\n` +
+      `篩選條件：\n` +
+      `${historyFilters.customer_id ? `客戶：${filteredHistoryCustomers.find(c => c.id == historyFilters.customer_id)?.name || '已選客戶'}\n` : ''}` +
+      `${historyFilters.order_type ? `訂單類型：${historyFilters.order_type === 'online' ? '網路訂單' : '現場銷售'}\n` : ''}` +
+      `${historyFilters.start_date ? `開始日期：${historyFilters.start_date}\n` : ''}` +
+      `${historyFilters.end_date ? `結束日期：${historyFilters.end_date}\n` : ''}` +
+      `符合條件的訂單數量：${orderHistory.length} 筆\n\n` +
+      `請輸入「確認刪除」以繼續：`;
+    
+    const userInput = prompt(confirmMessage);
+    if (userInput !== '確認刪除') {
+      alert('已取消刪除操作');
+      return;
+    }
+
+    // 二次確認
+    if (!window.confirm('⚠️ 最後確認：您真的要刪除這些訂單嗎？此操作無法復原！')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      // 構建請求參數
+      const params = new URLSearchParams();
+      if (historyFilters.customer_id) params.append('customer_id', historyFilters.customer_id);
+      if (historyFilters.start_date) params.append('start_date', historyFilters.start_date);
+      if (historyFilters.end_date) params.append('end_date', historyFilters.end_date);
+      if (historyFilters.order_type) params.append('order_type', historyFilters.order_type);
+      
+      const response = await axios.delete(`${config.apiUrl}/api/orders/history?${params}`);
+      
+      if (response.data.success) {
+        setSuccess(`✅ ${response.data.message}`);
+        // 重新載入訂單歷史
+        await fetchOrderHistory(true);
+        // 3秒後清除成功訊息
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError('刪除失敗：' + (response.data.message || '未知錯誤'));
+      }
+    } catch (error) {
+      console.error('刪除歷史訂單錯誤:', error);
+      setError('刪除失敗：' + (error.response?.data?.error || error.message));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2924,7 +3156,7 @@ const AdminPanel = ({ user }) => {
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
       <button 
         className="button" 
-        onClick={fetchOrderHistory}
+        onClick={() => fetchOrderHistory(true)} // 強制重新載入
         disabled={loading}
       >
         {loading ? '查詢中...' : '🔍 查詢訂單'}
@@ -2933,10 +3165,11 @@ const AdminPanel = ({ user }) => {
       <button 
         className="button" 
         onClick={() => {
+          const today = new Date().toISOString().split('T')[0];
           setHistoryFilters({
             customer_id: '',
-            start_date: '',
-            end_date: '',
+            start_date: today, // ✅ 清除篩選後，恢復為今天
+            end_date: today,   // ✅ 清除篩選後，恢復為今天
             order_type: ''
           });
           setHistoryCustomerSearchTerm('');
@@ -2949,6 +3182,7 @@ const AdminPanel = ({ user }) => {
       </button>
 
       {orderHistory.length > 0 && (
+          <>
           <button 
             className="button" 
             onClick={exportToCSV}
@@ -2956,6 +3190,16 @@ const AdminPanel = ({ user }) => {
           >
             📊 匯出 CSV
           </button>
+            <button 
+              className="button" 
+              onClick={deleteOrderHistory}
+              disabled={loading}
+              style={{ backgroundColor: '#e74c3c', color: 'white' }}
+              title="刪除符合當前篩選條件的所有訂單"
+            >
+              🗑️ 刪除歷史訂單
+            </button>
+          </>
         )}
       </div>
 
@@ -3027,21 +3271,34 @@ const AdminPanel = ({ user }) => {
                 const items = order.items && order.items.length > 0 ? order.items : [];
                 const hasFreeShipping = order.shipping_type === 'free' && order.shipping_fee < 0;
                 
+                // 確保每個訂單都有唯一的 key
+                const orderKey = order.id || `order-${orderIndex}-${order.customer_name || 'unknown'}`;
+                
                 return (
-                  <React.Fragment key={order.id}>
+                  <React.Fragment key={orderKey}>
                     {/* 產品項目 */}
                     {items.map((item, itemIndex) => (
-                      <tr key={`${order.id}-item-${itemIndex}`} style={{ 
+                      <tr key={`${orderKey}-item-${itemIndex}`} style={{ 
                         backgroundColor: orderIndex % 2 === 0 ? 'white' : '#f8f9fa' 
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.order_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {item.is_gift ? (
@@ -3065,11 +3322,11 @@ const AdminPanel = ({ user }) => {
                 <span style={{ 
                   padding: '4px 8px', 
                   borderRadius: '4px', 
-                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
+                            background: order.shipping_status === 'shipped' ? '#27ae60' : '#f39c12',
                   color: 'white',
                   fontSize: '12px'
                 }}>
-                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
+                            {order.shipping_status === 'shipped' ? '已出貨' : '待出貨'}
                 </span>
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
@@ -3117,7 +3374,7 @@ const AdminPanel = ({ user }) => {
                     
                     {/* 免運費項目 */}
                     {hasFreeShipping ? (
-                      <tr key={`${order.id}-freeshipping`} style={{ 
+                      <tr key={`${orderKey}-freeshipping`} style={{ 
                         backgroundColor: '#fff3cd',
                         border: '2px solid #ffc107'
                       }}>
@@ -3125,10 +3382,20 @@ const AdminPanel = ({ user }) => {
                           {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.order_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#e74c3c' }}>
                           🚚 免運費
@@ -3143,15 +3410,7 @@ const AdminPanel = ({ user }) => {
                           -${Math.abs(order.shipping_fee)}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                          <span style={{ 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
-                            color: 'white',
-                            fontSize: '12px'
-                          }}>
-                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
-                          </span>
+                          {/* ✅ 免運費行的狀態欄位空白，因為備註欄位已經有說明 */}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           免運費優惠
@@ -3164,7 +3423,7 @@ const AdminPanel = ({ user }) => {
                     
                     {/* 信用卡手續費項目 */}
                     {order.credit_card_fee && order.credit_card_fee > 0 ? (
-                      <tr key={`${order.id}-creditcardfee`} style={{ 
+                      <tr key={`${orderKey}-creditcardfee`} style={{ 
                         backgroundColor: '#fef5e7',
                         border: '2px solid #e67e22'
                       }}>
@@ -3172,10 +3431,20 @@ const AdminPanel = ({ user }) => {
                           {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.order_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#e67e22' }}>
                           💳 信用卡手續費
@@ -3190,15 +3459,7 @@ const AdminPanel = ({ user }) => {
                           -${order.credit_card_fee}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                          <span style={{ 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
-                            color: 'white',
-                            fontSize: '12px'
-                          }}>
-                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
-                          </span>
+                          {/* ✅ 信用卡手續費行的狀態欄位空白，因為備註欄位已經有說明 */}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           信用卡手續費扣除
@@ -3211,7 +3472,7 @@ const AdminPanel = ({ user }) => {
                     
                     {/* 蝦皮費用項目 */}
                     {order.shopee_fee && order.shopee_fee > 0 ? (
-                      <tr key={`${order.id}-shopeefee`} style={{ 
+                      <tr key={`${orderKey}-shopeefee`} style={{ 
                         backgroundColor: '#fef2f2',
                         border: '2px solid #e74c3c'
                       }}>
@@ -3219,10 +3480,20 @@ const AdminPanel = ({ user }) => {
                           {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.order_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold', color: '#e74c3c' }}>
                           🛒 蝦皮訂單費用
@@ -3237,15 +3508,7 @@ const AdminPanel = ({ user }) => {
                           -${order.shopee_fee}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                          <span style={{ 
-                            padding: '4px 8px', 
-                            borderRadius: '4px', 
-                            background: order.status === 'shipped' ? '#27ae60' : '#f39c12',
-                            color: 'white',
-                            fontSize: '12px'
-                          }}>
-                            {order.status === 'shipped' ? '已出貨' : '待出貨'}
-                          </span>
+                          {/* ✅ 蝦皮訂單費用行的狀態欄位空白，因為備註欄位已經有說明 */}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           蝦皮訂單費用扣除
@@ -3259,17 +3522,27 @@ const AdminPanel = ({ user }) => {
                     
                     {/* 無產品的情況 - 已隱藏，避免顯示無意義的 "0" */}
                     {/* {items.length === 0 && !hasFreeShipping && (
-                      <tr key={order.id} style={{ 
+                      <tr key={orderKey} style={{ 
                         backgroundColor: orderIndex % 2 === 0 ? 'white' : '#f8f9fa' 
                       }}>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                           {order.customer_name || '未知客戶'}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.order_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.order_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
+                          {new Date(order.delivery_date).toLocaleDateString('zh-TW', {
+                            timeZone: 'Asia/Taipei',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                          })}
                         </td>
                         <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#999' }}>
                           無產品
@@ -3330,7 +3603,7 @@ const AdminPanel = ({ user }) => {
                           </div>
                         </td>
                       </tr>
-                    )} */}
+                    */}
                   </React.Fragment>
                 );
               })}
@@ -3449,7 +3722,12 @@ const AdminPanel = ({ user }) => {
                     }}
                   >
                     <div style={{ fontWeight: 'bold', marginBottom: '10px', color: isToday ? '#27ae60' : '#333' }}>
-                      {date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', weekday: 'short' })}
+                      {date.toLocaleDateString('zh-TW', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        weekday: 'short',
+                        timeZone: 'Asia/Taipei'
+                      })}
                       {isToday && ' (今天)'}
                     </div>
                     
@@ -3496,13 +3774,54 @@ const AdminPanel = ({ user }) => {
               </tr>
             </thead>
             <tbody>
-              {shippingOrders.map((order) => {
-                // 檢查製作狀態
-                const isProductionComplete = order.items && order.items.every(item => item.item_status === 'completed');
-                const productionStatus = isProductionComplete ? '製作完成' : '製作中';
+              {shippingOrders.map((order, orderIndex) => {
+                // ✅ 檢查製作狀態：改為檢查庫存是否足夠，而不是檢查 production_date
+                // 解析訂單項目
+                let orderItems = [];
+                try {
+                  if (Array.isArray(order.items)) {
+                    orderItems = order.items;
+                  } else if (typeof order.items === 'string') {
+                    orderItems = order.items.trim() ? JSON.parse(order.items) : [];
+                  }
+                } catch (e) {
+                  orderItems = [];
+                }
+                
+                // 檢查每個產品的庫存是否足夠
+                let hasInsufficientStock = false;
+                let insufficientProducts = [];
+                
+                for (const item of orderItems) {
+                  const productName = item.product_name || item.name;
+                  const requiredQty = Number(item.quantity) || 0;
+                  
+                  if (productName && requiredQty > 0) {
+                    // 從庫存數據中查找該產品
+                    const product = inventoryData.find(p => {
+                      const name1 = (p.name || '').trim().toLowerCase().replace(/\s+/g, '');
+                      const name2 = (productName || '').trim().toLowerCase().replace(/\s+/g, '');
+                      return name1 === name2;
+                    });
+                    
+                    const currentStock = product ? (Number(product.current_stock) || 0) : 0;
+                    
+                    if (currentStock < requiredQty) {
+                      hasInsufficientStock = true;
+                      insufficientProducts.push(`${productName}(${currentStock}/${requiredQty})`);
+                    }
+                  }
+                }
+                
+                // 製作狀態：如果有庫存不足，顯示「庫存不足」，否則顯示「可出貨」
+                const productionStatus = hasInsufficientStock ? '庫存不足' : '可出貨';
+                const canShip = !hasInsufficientStock;
+                
+                // 確保每個訂單都有唯一的 key
+                const orderKey = order.id || `shipping-order-${orderIndex}-${order.customer_name || 'unknown'}`;
                 
                 return (
-                  <tr key={order.id}>
+                  <tr key={orderKey}>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {/* 訂單編號 - 第一欄 */}
                       {order.order_number && (
@@ -3531,7 +3850,7 @@ const AdminPanel = ({ user }) => {
                         <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>📍 {order.address}</div>
                       )}
                       
-                      {/* 全家店名 - 第五欄 */}
+                      {/* 便利商店店名 - 第五欄 */}
                       {order.family_mart_address && (
                         <div style={{ fontSize: '12px', color: '#666', marginBottom: '2px' }}>🏪 {order.family_mart_address}</div>
                       )}
@@ -3602,15 +3921,10 @@ const AdminPanel = ({ user }) => {
                                     </div>
                                   )}
                                 </div>
-                                <div style={{ textAlign: 'right', fontSize: '12px' }}>
-                                  <div>數量: {item.quantity}</div>
+                                <div style={{ textAlign: 'right', fontSize: '16px' }}>
+                                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>數量: {item.quantity}</div>
                                   {user?.role === 'admin' && (
-                                    <>
-                                      <div>單價: ${item.unit_price}</div>
-                                      <div style={{ fontWeight: 'bold', color: item.is_gift ? '#e67e22' : '#333' }}>
-                                        小計: ${item.item_total}
-                                      </div>
-                                    </>
+                                    <div style={{ fontWeight: 'bold' }}>單價: ${item.unit_price}</div>
                                   )}
                                 </div>
                               </div>
@@ -3645,10 +3959,12 @@ const AdminPanel = ({ user }) => {
                       <span style={{ 
                         padding: '4px 8px', 
                         borderRadius: '4px', 
-                        background: isProductionComplete ? '#27ae60' : '#f39c12',
+                        background: canShip ? '#27ae60' : '#e74c3c',
                         color: 'white',
                         fontSize: '12px'
-                      }}>
+                      }}
+                      title={hasInsufficientStock ? `不足：${insufficientProducts.join(', ')}` : ''}
+                      >
                         {productionStatus}
                       </span>
                     </td>
@@ -3656,15 +3972,15 @@ const AdminPanel = ({ user }) => {
                       <span style={{ 
                         padding: '4px 8px', 
                         borderRadius: '4px', 
-                        background: order.status === 'shipped' ? '#27ae60' : '#e74c3c',
+                        background: order.shipping_status === 'shipped' ? '#27ae60' : '#e74c3c',
                         color: 'white',
                         fontSize: '12px'
                       }}>
-                        {order.status === 'shipped' ? '已出貨' : '待出貨'}
+                        {order.shipping_status === 'shipped' ? '已出貨' : '待出貨'}
                       </span>
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
-                      {order.status === 'shipped' ? (
+                      {order.shipping_status === 'shipped' ? (
                         <button
                           onClick={() => handleUpdateShippingStatus(order.id, 'pending')}
                           style={{
@@ -3681,15 +3997,15 @@ const AdminPanel = ({ user }) => {
                         </button>
                       ) : (
                         <button
-                          onClick={() => handleUpdateShippingStatus(order.id, 'completed')}
-                          disabled={!isProductionComplete}
+                          onClick={() => handleUpdateShippingStatus(order.id, 'shipped')}
+                          disabled={!canShip}
                           style={{
-                            backgroundColor: isProductionComplete ? '#27ae60' : '#95a5a6',
+                            backgroundColor: canShip ? '#27ae60' : '#95a5a6',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
                             padding: '6px 12px',
-                            cursor: isProductionComplete ? 'pointer' : 'not-allowed',
+                            cursor: canShip ? 'pointer' : 'not-allowed',
                             fontSize: '12px'
                           }}
                         >
@@ -3818,7 +4134,32 @@ const AdminPanel = ({ user }) => {
 
       {/* 庫存狀態表格 */}
       <div style={{ marginBottom: '20px' }}>
-        <h3>庫存狀態</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>庫存狀態</h3>
+          <button
+            type="button"
+            onClick={handleResetAllStock}
+            disabled={loading}
+            style={{
+              backgroundColor: '#e74c3c',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 'bold',
+              opacity: loading ? 0.6 : 1,
+              transition: 'all 0.3s ease'
+            }}
+            title="將所有產品的庫存設置為0"
+          >
+            🗑️ 一鍵歸零
+          </button>
+        </div>
         {loading ? (
           <div className="loading">載入中...</div>
         ) : (
@@ -4048,21 +4389,6 @@ const AdminPanel = ({ user }) => {
           >
             📦 庫存管理
           </button>
-          {(process.env.NODE_ENV === 'production' || process.env.REACT_APP_HIDE_SCHEDULING === 'true') ? null : (
-            <button 
-              className={`nav-button ${activeTab === 'smart-scheduling' ? 'active' : ''}`}
-              onClick={() => setActiveTab('smart-scheduling')}
-              style={{ 
-                backgroundColor: activeTab === 'smart-scheduling' ? '#4facfe' : '#00f2fe', 
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              🏭 智能排程
-            </button>
-          )}
           {/* 參數測試功能已移除 */}
           <button 
             className={`nav-button ${activeTab === 'shipping-management' ? 'active' : ''}`}

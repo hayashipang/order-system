@@ -1,0 +1,74 @@
+{
+  "api_specification": {
+    "endpoint": "PUT /api/kitchen/production/:date/:productName/status",
+    "description": "Kitchen 生產狀態更新 API",
+    "version": "1.0.0",
+    "last_updated": "2025-01-28"
+  },
+  "requirements": {
+    "mandatory_operations": [
+      {
+        "operation": "updateProductionStatus",
+        "description": "必須更新生產狀態",
+        "fields": [
+          "item.status",
+          "item.completed_quantity"
+        ],
+        "validation": "status 必須為 'completed' 或 'pending'"
+      },
+      {
+        "operation": "updateInventoryStock",
+        "description": "必須更新庫存（加/減）",
+        "fields": [
+          "product.current_stock"
+        ],
+        "validation": "completed 時增加庫存，pending 時不變"
+      },
+      {
+        "operation": "returnUpdatedItem",
+        "description": "必須回傳更新後的 production item",
+        "fields": [
+          "success",
+          "message",
+          "added",
+          "updated_item"
+        ],
+        "validation": "added 欄位必須顯示庫存變化量"
+      }
+    ]
+  },
+  "test_scenarios": [
+    {
+      "scenario": "標記完成",
+      "steps": [
+        "1. 記錄 before 庫存",
+        "2. 呼叫 API 設定 status: 'completed'",
+        "3. 記錄 after 庫存",
+        "4. 驗證 after > before",
+        "5. 驗證 added = after - before"
+      ]
+    },
+    {
+      "scenario": "標記待處理",
+      "steps": [
+        "1. 記錄 before 庫存",
+        "2. 呼叫 API 設定 status: 'pending'",
+        "3. 記錄 after 庫存",
+        "4. 驗證 after = before",
+        "5. 驗證 added = 0"
+      ]
+    }
+  ],
+  "validation_rules": {
+    "inventory_update": {
+      "rule": "庫存必須正確更新",
+      "test": "before_stock != after_stock 當 status='completed'",
+      "failure_message": "❌ Kitchen API 庫存更新失敗"
+    },
+    "response_format": {
+      "rule": "回應格式必須完整",
+      "required_fields": ["success", "message", "added"],
+      "failure_message": "❌ Kitchen API 回應格式不正確"
+    }
+  }
+}

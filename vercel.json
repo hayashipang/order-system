@@ -2,10 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "client/package.json",
       "use": "@vercel/static-build",
       "config": {
@@ -15,15 +11,15 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/server.js"
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/client/build/index.html"
+      "dest": "/index.html"
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "REACT_APP_API_URL": "@react_app_api_url"
   }
 }

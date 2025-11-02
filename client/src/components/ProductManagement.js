@@ -16,6 +16,9 @@ const ProductManagement = () => {
     price: '',
     description: ''
   });
+  
+  // 確保所有輸入字段都有初始值，避免 React 警告
+  const getFormValue = (field) => formData[field] || '';
 
   // 運費設定狀態
   const [shippingFee, setShippingFee] = useState(120);
@@ -108,8 +111,8 @@ const ProductManagement = () => {
   const handleEdit = (product) => {
     setEditingProduct(product);
     setFormData({
-      name: product.name,
-      price: product.price.toString(),
+      name: product.name || '',
+      price: product.price ? product.price.toString() : '',
       description: product.description || ''
     });
     setShowForm(true);
@@ -181,7 +184,7 @@ const ProductManagement = () => {
                 <input
                   type="text"
                   className="form-input"
-                  value={formData.name}
+                  value={getFormValue('name')}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="請輸入產品名稱"
                   required
@@ -193,7 +196,7 @@ const ProductManagement = () => {
                 <input
                   type="number"
                   className="form-input"
-                  value={formData.price}
+                  value={getFormValue('price')}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   placeholder="請輸入價格"
                   min="0"
@@ -206,7 +209,7 @@ const ProductManagement = () => {
                 <label className="form-label">產品描述</label>
                 <textarea
                   className="form-textarea"
-                  value={formData.description}
+                  value={getFormValue('description')}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="請輸入產品描述"
                   rows="3"

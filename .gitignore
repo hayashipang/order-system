@@ -11,6 +11,7 @@ client/build/
 # pos-system/build/  # 註解掉，讓 Vercel 可以部署 POS 系統
 build/
 dist/
+static/
 
 # Environment variables
 .env
@@ -118,3 +119,14 @@ dev/
 # Local data files (preserve user data during updates)
 data.local.json
 *.local.json
+
+# Cursor IDE
+.cursorignore
+
+# Test reports and documentation (optional - can be committed if needed)
+# COMPLETE_TEST_REPORT*.md
+# TEST_REPORT.md
+# API_MAPPING_CHECK.md
+
+# Build artifacts
+asset-manifest.json

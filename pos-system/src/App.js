@@ -3,11 +3,11 @@ import ProductGrid from './components/ProductGrid';
 import CashierPanel from './components/CashierPanel';
 import SalesHistory from './components/SalesHistory';
 // 根據環境選擇API配置
-const apiConfig = process.env.NODE_ENV === 'production' 
-  ? require('./services/api.production') 
-  : require('./services/api');
+import * as apiLocal from './services/api';
+import * as apiProduction from './services/api.production';
 
 console.log('🔧 POS系統環境:', process.env.NODE_ENV);
+const apiConfig = process.env.NODE_ENV === 'production' ? apiProduction : apiLocal;
 console.log('🔧 使用API配置:', apiConfig);
 
 const { productAPI, orderAPI } = apiConfig;

@@ -8,6 +8,17 @@ const ProductGrid = ({ products, selectedProducts, onProductSelect }) => {
     return { status: 'good', color: '#38a169', text: '庫存充足' };
   };
 
+  if (!products || products.length === 0) {
+    return (
+      <div className="product-section">
+        <h2 style={{ marginBottom: '1rem', color: '#2d3748' }}>產品選擇</h2>
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#718096' }}>
+          尚無產品資料
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="product-section">
       <h2 style={{ marginBottom: '1rem', color: '#2d3748' }}>產品選擇</h2>

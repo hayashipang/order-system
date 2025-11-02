@@ -1,6 +1,9 @@
 import React from 'react';
 
 const InventoryOverview = ({ inventoryData }) => {
+  // 確保 inventoryData 是陣列
+  const safeInventoryData = Array.isArray(inventoryData) ? inventoryData : [];
+  
   return (
     <div style={{
       marginBottom: '20px',
@@ -9,18 +12,31 @@ const InventoryOverview = ({ inventoryData }) => {
       borderRadius: '8px',
       border: '1px solid #dee2e6'
     }}>
-      <h3 style={{ margin: '0 0 15px 0', color: '#2c3e50' }}>📦 庫存狀態概覽</h3>
-      {inventoryData.length > 0 ? (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '15px'
+      }}>
+        <h3 style={{ margin: '0', color: '#2c3e50' }}>📦 庫存狀態概覽</h3>
+      </div>
+
+      {safeInventoryData.length > 0 ? (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '10px'
         }}>
-          {inventoryData.map((product) => {
-            const isLowStock = product.current_stock <= product.min_stock;
+          {safeInventoryData.map((product, index) => {
+            // 處理不同的資料結構
+            const productName = product.name || product.product_name || '未命名商品';
+            const currentStock = Number(product.current_stock || 0);
+            const minStock = Number(product.min_stock || 10); // 預設最低庫存為 10
+            const isLowStock = currentStock <= minStock;
+            
             return (
               <div
-                key={product.id}
+                key={product.id || index}
                 style={{
                   padding: '12px',
                   borderRadius: '6px',
@@ -29,34 +45,49 @@ const InventoryOverview = ({ inventoryData }) => {
                   textAlign: 'center'
                 }}
               >
-                <div style={{ 
-                  fontWeight: 'bold', 
-                  marginBottom: '5px',
-                  color: isLowStock ? '#e74c3c' : '#27ae60'
-                }}>
-                  {product.name}
-                </div>
-                <div style={{ 
-                  fontSize: '18px', 
+                <div style={{
+                  fontSize: '16px',
                   fontWeight: 'bold',
-                  color: isLowStock ? '#e74c3c' : '#27ae60'
+                  color: '#2c3e50',
+                  marginBottom: '8px'
                 }}>
-                  {product.current_stock}
+                  {productName}
                 </div>
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#666',
-                  marginTop: '2px'
+                <div style={{
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  color: isLowStock ? '#e74c3c' : '#27ae60',
+                  marginBottom: '4px'
                 }}>
-                  {isLowStock ? '⚠️ 庫存不足' : '✅ 庫存正常'}
+                  {currentStock} 瓶
                 </div>
+                <div style={{
+                  fontSize: '12px',
+                  color: '#6c757d'
+                }}>
+                  最低庫存: {minStock} 瓶
+                </div>
+                {isLowStock && (
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#e74c3c',
+                    fontWeight: 'bold',
+                    marginTop: '4px'
+                  }}>
+                    ⚠️ 庫存不足
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       ) : (
-        <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
-          載入庫存資料中...
+        <div style={{
+          textAlign: 'center',
+          color: '#6c757d',
+          padding: '20px'
+        }}>
+          暫無庫存資料
         </div>
       )}
     </div>

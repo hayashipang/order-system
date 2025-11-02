@@ -15,18 +15,18 @@ const CustomerOrders = () => {
     setLoading(true);
     setError('');
     try {
-      // 使用真正的 API 載入客戶訂單
-      const response = await axios.get(`${config.apiUrl}/api/orders/customers/${date}`);
+      // 使用新的 API 載入客戶訂單（顯示所有狀態）
+      const response = await axios.get(`${config.apiUrl}/api/orders/customers/history?date=${date}`);
       console.log('客戶訂單 API 響應:', response.data);
       
       // 確保數據結構正確
       const orders = response.data.orders || [];
-      const totalAmount = response.data.totalAmount || 0;
+      const totalAmount = orders.reduce((sum, order) => sum + (order.total_amount || 0), 0);
       
       // 確保每個訂單都有必要的屬性
       const safeOrders = orders.map(order => ({
         ...order,
-        customer_total: order.customer_total || 0,
+        customer_total: order.total_amount || 0,
         items: (order.items || []).map(item => ({
           ...item,
           unit_price: item.unit_price || 0,
@@ -113,7 +113,15 @@ const CustomerOrders = () => {
       const startDate = today.toISOString().split('T')[0];
       
       const response = await axios.get(`${config.apiUrl}/api/orders/weekly/${startDate}`);
-      setWeeklyData(response.data.weekly_data);
+      // 後端直接回傳日期物件，需要轉換為陣列格式
+      const weeklyDataArray = Object.keys(response.data).map(date => ({
+        date,
+        total_quantity: response.data[date].reduce((sum, order) => {
+          const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+          return sum + items.reduce((itemSum, item) => itemSum + (item.quantity || 0), 0);
+        }, 0)
+      }));
+      setWeeklyData(weeklyDataArray);
     } catch (err) {
       setError('取得週資料失敗: ' + (err.response?.data?.error || err.message));
     }
@@ -161,7 +169,7 @@ const CustomerOrders = () => {
 
   const getTotalItems = () => {
     return customerOrders.reduce((total, order) => {
-      return total + order.items.reduce((itemTotal, item) => itemTotal + item.quantity, 0);
+      return total + (order.items || []).reduce((itemTotal, item) => itemTotal + (item.quantity || 0), 0);
     }, 0);
   };
 
@@ -248,7 +256,7 @@ const CustomerOrders = () => {
               gap: '10px',
               maxWidth: '600px'
             }}>
-              {weeklyData.map((dayData, index) => (
+              {(weeklyData || []).map((dayData, index) => (
                 <div
                   key={index}
                   onClick={() => {
@@ -336,7 +344,7 @@ const CustomerOrders = () => {
                       fontSize: '18px',
                       fontWeight: 'bold'
                     }}>
-                      當日總金額: NT$ {(totalDailyAmount || 0).toLocaleString()}
+                      當日總金額: NT$ {totalDailyAmount.toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -346,7 +354,7 @@ const CustomerOrders = () => {
                     <div key={index} className="customer-card">
                       <div className="customer-header">
                         <div>
-                          {/* 訂單編號 - 第一欄 */}
+                          {/* 訂單編號 */}
                           {order.order_number && (
                             <div style={{ 
                               background: '#3498db', 
@@ -362,81 +370,38 @@ const CustomerOrders = () => {
                             </div>
                           )}
                           
-                          {/* 客戶姓名 - 第二欄 */}
-                          <div className="customer-name" style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>
-                            {order.customer_name}
+                          {/* 狀態標籤 */}
+                          <div style={{ marginBottom: '8px' }}>
+                            <span className="tag" style={{
+                              background: order.status === 'scheduled' ? '#f39c12' : 
+                                         order.status === 'completed' ? '#27ae60' : '#95a5a6',
+                              color: 'white',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              marginRight: '8px',
+                              fontWeight: 'bold'
+                            }}>
+                              status: {order.status || 'pending'}
+                            </span>
+                            <span className="tag" style={{
+                              background: order.shipping_status === 'shipped' ? '#27ae60' : 
+                                         order.shipping_status === 'pending' ? '#e74c3c' : '#95a5a6',
+                              color: 'white',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              fontWeight: 'bold'
+                            }}>
+                              shipping: {order.shipping_status || 'pending'}
+                            </span>
                           </div>
                           
-                          {/* 聯絡電話 - 第三欄 */}
-                          <div className="customer-phone" style={{ fontSize: '16px', marginBottom: '4px' }}>
-                            📞 {order.phone}
-                          </div>
-                          
-                          {/* 送貨地點 - 第四欄 */}
-                          {order.address && (
-                            <div className="customer-address" style={{ fontSize: '14px', marginBottom: '4px' }}>
-                              📍 送貨地點: {order.address}
-                            </div>
-                          )}
-                          
-                          {/* 全家店名 - 第五欄 */}
-                          {order.family_mart_address && (
-                            <div className="customer-family-mart" style={{ fontSize: '14px', marginBottom: '4px' }}>
-                              🏪 全家店名: {order.family_mart_address}
-                            </div>
-                          )}
-                          
-                          {/* 來源 - 第六欄（彩色標籤顯示） */}
-                          {order.source && (
-                            <div style={{ marginBottom: '4px' }}>
-                              <span style={{
-                                padding: '4px 8px',
-                                borderRadius: '12px',
-                                fontSize: '12px',
-                                fontWeight: '500',
-                                backgroundColor: order.source?.includes('蝦皮') ? '#ff6b35' : 
-                                               order.source?.includes('IG') ? '#e1306c' :
-                                               order.source?.includes('FB') ? '#1877f2' :
-                                               order.source?.includes('全家') ? '#00a651' :
-                                               order.source?.includes('7-11') ? '#ff6600' : '#27ae60',
-                                color: 'white'
-                              }}>
-                                🛒 來源: {order.source}
-                              </span>
-                            </div>
-                          )}
-                          
-                          {/* 付款方式 - 第七欄（彩色標籤顯示） */}
-                          {order.payment_method && (
-                            <div style={{ marginBottom: '8px' }}>
-                              <span style={{
-                                padding: '4px 8px',
-                                borderRadius: '12px',
-                                fontSize: '12px',
-                                fontWeight: '500',
-                                backgroundColor: order.payment_method === '信用卡' ? '#3498db' : 
-                                               order.payment_method === 'LinePay' ? '#00c300' :
-                                               order.payment_method === '現金' ? '#95a5a6' : '#e74c3c',
-                                color: 'white'
-                              }}>
-                                💳 付款方式: {order.payment_method}
-                              </span>
-                            </div>
-                          )}
-                          
-                          <div className="delivery-date" style={{ 
-                            background: '#f39c12', 
-                            color: 'white', 
-                            padding: '6px 12px', 
-                            borderRadius: '6px',
-                            fontSize: '14px',
-                            fontWeight: 'bold',
-                            marginTop: '8px',
-                            display: 'inline-block'
-                          }}>
-                            📅 出貨日期: {new Date(order.delivery_date).toLocaleDateString('zh-TW')}
-                          </div>
-                          {order.order_notes && <div className="order-notes">備註: {order.order_notes}</div>}
+                          <div className="customer-name">{order.customer_name}</div>
+                          <div className="customer-phone">{order.phone}</div>
+                          {order.address && <div className="customer-address">地址: {order.address}</div>}
+                          {order.source && <div className="customer-source">來源: {order.source}</div>}
+                          {order.notes && <div className="order-notes">備註: {order.notes}</div>}
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                           <div style={{ 
@@ -447,73 +412,27 @@ const CustomerOrders = () => {
                             fontSize: '16px',
                             fontWeight: 'bold'
                           }}>
-                            總金額: NT$ {(order.customer_total || 0).toLocaleString()}
+                            總金額: NT$ {order.customer_total.toLocaleString()}
                           </div>
-                          
-                          {/* 信用卡手續費顯示 */}
-                          {order.credit_card_fee && order.credit_card_fee > 0 && (
-                            <div style={{ 
-                              background: '#e67e22', 
-                              color: 'white', 
-                              padding: '4px 8px', 
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 'bold'
-                            }}>
-                              💳 手續費扣除: NT$ {order.credit_card_fee.toLocaleString()}
-                            </div>
-                          )}
-                          
-                          {/* 蝦皮費用顯示 */}
-                          {order.shopee_fee && order.shopee_fee > 0 && (
-                            <div style={{ 
-                              background: '#e74c3c', 
-                              color: 'white', 
-                              padding: '4px 8px', 
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 'bold'
-                            }}>
-                              🛒 蝦皮費用扣除: NT$ {order.shopee_fee.toLocaleString()}
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {order.shipping_type === 'free' && (
-                              <span 
-                                style={{ 
-                                  backgroundColor: '#e74c3c',
-                                  color: 'white',
-                                  padding: '4px 8px',
-                                  borderRadius: '4px',
-                                  fontSize: '12px',
-                                  fontWeight: 'bold'
-                                }}
-                                title="免運費"
-                              >
-                                🚚 免運
-                              </span>
-                            )}
-                            <span 
-                              className="order-status"
-                              style={{ backgroundColor: getStatusColor(order.status) }}
-                            >
-                              {getStatusText(order.status)}
-                            </span>
-                          </div>
+                          <span 
+                            className="order-status"
+                            style={{ backgroundColor: getStatusColor(order.shipping_status) }}
+                          >
+                            {getStatusText(order.shipping_status)}
+                          </span>
                           <select
-                            value={order.status}
-                            onChange={(e) => updateOrderStatus(order.order_id, e.target.value)}
+                            value={order.shipping_status}
+                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
                             style={{
                               padding: '6px 12px',
                               border: '1px solid #ddd',
                               borderRadius: '6px',
-                              fontSize: '12px'
+                              fontSize: '12px',
+                              cursor: 'pointer'
                             }}
                           >
                             <option value="pending">待出貨</option>
-                            <option value="shipped" disabled={order.status === 'pending' && !order.all_items_completed}>
-                              {order.all_items_completed ? '已出貨' : '已出貨 (需完成所有產品)'}
-                            </option>
+                            <option value="shipped">已出貨</option>
                           </select>
                         </div>
                       </div>
@@ -522,31 +441,13 @@ const CustomerOrders = () => {
                         {order.items.map((item, itemIndex) => (
                           <div key={itemIndex} className="order-item">
                             <div style={{ flex: 1 }}>
-                              <div className="item-name">
-                                {item.is_gift ? (
-                                  <span style={{ color: '#e67e22', fontWeight: 'bold' }}>
-                                    🎁 {item.product_name} (贈送)
-                                  </span>
-                                ) : (
-                                  item.product_name
-                                )}
-                              </div>
+                              <div className="item-name">{item.product_name}</div>
                               <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>
-                                單價: NT$ {(item.unit_price || 0).toLocaleString()}
+                                單價: NT$ {item.unit_price.toLocaleString()}
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div className="item-quantity">{item.quantity} 瓶</div>
-                              <div style={{ 
-                                background: item.item_status === 'completed' ? '#28a745' : '#dc3545', 
-                                color: 'white', 
-                                padding: '4px 8px', 
-                                borderRadius: '4px',
-                                fontSize: '12px',
-                                fontWeight: 'bold'
-                              }}>
-                                {item.item_status === 'completed' ? '已完成' : '待製作'}
-                              </div>
                               <div style={{ 
                                 background: '#3498db', 
                                 color: 'white', 
@@ -555,7 +456,7 @@ const CustomerOrders = () => {
                                 fontSize: '14px',
                                 fontWeight: 'bold'
                               }}>
-                                NT$ {(item.item_total || 0).toLocaleString()}
+                                NT$ {item.item_total.toLocaleString()}
                               </div>
                             </div>
                           </div>
@@ -578,7 +479,7 @@ const CustomerOrders = () => {
         <h2>出貨說明</h2>
         <div style={{ lineHeight: '1.6', color: '#666' }}>
           <p>• 此頁面按客戶分組顯示訂單，方便出貨時按客戶打包</p>
-          <p>• 可以更新訂單狀態：待製作 → 製作中 → 已完成 → 已出貨</p>
+          <p>• 可以更新訂單狀態：待出貨 → 已出貨</p>
           <p>• 每個客戶的訂單會清楚顯示產品名稱和數量</p>
           <p>• 可以切換日期查看不同日期的客戶訂單</p>
         </div>

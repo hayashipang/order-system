@@ -33,7 +33,6 @@ console.log('🌍 環境設定:');
 console.log('  NODE_ENV:', NODE_ENV);
 console.log('  PORT:', PORT);
 console.log('  API_BASE_URL:', process.env.API_BASE_URL || '未設定');
-console.log('🧪 實驗功能：添加了新的日誌記錄功能');
 
 // Middleware
 app.use(cors({
@@ -78,6 +77,103 @@ if (process.env.NODE_ENV === 'production') {
 const TEMPLATE_DATA_FILE = path.join(__dirname, 'data.json');  // 範本資料檔案 (會被 Git 追蹤)
 const LOCAL_DATA_FILE = path.join(__dirname, 'data.local.json'); // 本地資料檔案 (不會被 Git 追蹤)
 let db = {};
+
+// 🧩 統一的庫存重建函式
+function rebuildInventoryFromOrders() {
+  console.log('🔄 開始重建庫存...');
+  
+  const productMap = {};
+  const products = db.products || [];
+
+  // 先把所有產品的 current_stock 重置為 original_stock 或 0
+  products.forEach(p => {
+    productMap[p.name] = {
+      ...p,
+      current_stock: p.original_stock || 0
+    };
+  });
+
+  // 再依據現有「未完成的排程訂單」扣除排程數量
+  const scheduledOrders = db.orders.filter(order => 
+    order.scheduling_status === 'scheduled' && 
+    order.scheduled_items && 
+    Array.isArray(order.scheduled_items)
+  );
+
+  scheduledOrders.forEach(order => {
+    order.scheduled_items.forEach(item => {
+      const p = productMap[item.product_name];
+      if (p) {
+        // 如果排程項目已完成，則增加庫存；否則扣除排程數量
+        // 檢查多個可能的完成狀態
+        const isCompleted = item.status === 'completed' || 
+                           order.status === 'completed' || 
+                           order.scheduling_status === 'completed';
+        
+        if (isCompleted) {
+          p.current_stock = (p.current_stock || 0) + (item.scheduled_quantity || 0);
+        } else {
+        p.current_stock = Math.max(0, (p.current_stock || 0) - (item.scheduled_quantity || 0));
+        }
+      }
+    });
+  });
+
+  // 更新 db.products
+  db.products = Object.values(productMap);
+  
+  console.log('✅ 庫存重建完成');
+  console.log('📊 重建後的庫存狀態:', db.products.map(p => `${p.name}: ${p.current_stock}`).join(', '));
+}
+
+// 動態讀取數據函數 - 每次都讀取最新數據
+function getLatestData() {
+  try {
+    if (fs.existsSync(LOCAL_DATA_FILE)) {
+      const data = fs.readFileSync(LOCAL_DATA_FILE, 'utf8');
+      const parsedData = JSON.parse(data);
+      return parsedData;
+    }
+    return db; // 如果文件不存在，返回記憶體中的數據
+  } catch (error) {
+    console.error('讀取數據失敗:', error);
+    return db;
+  }
+}
+
+// 處理取消排程
+function handleCancelScheduling(orderIds, res) {
+  try {
+    const orders = Array.isArray(db.orders) ? db.orders : [];
+    
+    // 更新訂單狀態為取消排程
+    const updatedOrders = orders.map(order => {
+      if (orderIds.includes(order.id)) {
+        return {
+          ...order,
+          scheduling_status: 'pending',
+          production_date: null,
+          scheduled_at: null,
+          scheduled_items: []
+        };
+      }
+      return order;
+    });
+    
+    // 更新數據庫
+    db.orders = updatedOrders;
+    saveData();
+    
+    res.json({
+      success: true,
+      message: `已取消 ${orderIds.length} 個訂單的排程`,
+      cancelledOrders: orderIds.length
+    });
+  } catch (error) {
+    console.error('取消排程失敗:', error);
+    res.status(500).json({ error: '取消排程失敗' });
+  }
+}
 
 // 檔案讀寫函數 - 支援資料檔案分離
 function loadData() {
@@ -217,37 +313,144 @@ app.get('/api/products', checkDatabaseReady, (req, res) => {
 // 取得所有訂單（用於排程）
 app.get('/api/orders', checkDatabaseReady, (req, res) => {
   try {
-    // 為每個訂單添加客戶名稱
-    const ordersWithCustomer = db.orders.map(order => {
-      const customer = db.customers.find(c => c.id === order.customer_id);
+    // 動態讀取最新數據
+    const latestDb = getLatestData();
+    const allOrders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    const allCustomers = Array.isArray(latestDb.customers) ? latestDb.customers : [];
+    const allItems = Array.isArray(latestDb.order_items) ? latestDb.order_items : [];
+
+    // 合併客戶資料與訂單項目
+    const ordersWithCustomer = allOrders.map(order => {
+      const customer = allCustomers.find(c => String(c.id) === String(order.customer_id));
+      const orderItems = allItems.filter(item => item.order_id === order.id);
+      
+      // 先建立基本訂單物件，排除舊的 customer_name
+      const { customer_name: oldCustomerName, ...orderWithoutCustomerName } = order;
+      
       return {
-        ...order,
-        customer_name: customer ? customer.name : '現場訂單'
+        ...orderWithoutCustomerName,
+        customer_name: customer ? customer.name : '現場訂單',
+        items: orderItems.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          special_notes: item.special_notes,
+          is_gift: item.is_gift
+        }))
       };
     });
+
+    res.set('Cache-Control', 'no-store');
     res.json(ordersWithCustomer);
   } catch (error) {
+    console.error('取得訂單失敗:', error);
     res.status(500).json({ error: '取得訂單失敗' });
   }
 });
 
-// 儲存排程設定
+// 儲存排程設定 - 替換模式，不是累加
 app.post('/api/scheduling/save', (req, res) => {
   try {
-    const { orders, selectedOrders, productionDate } = req.body;
+    const { orders, selectedOrders, productionDate, manufacturingQuantities } = req.body;
+    
+    console.log('🔄 儲存排程 - 替換模式');
+    console.log('📅 製造日期:', productionDate);
+    console.log('📋 選中訂單:', selectedOrders);
     
     // 初始化排程數據結構
     if (!db.scheduling) {
       db.scheduling = {};
     }
     
-    // 儲存排程設定
+    // 🔥 關鍵：清除該日期的所有舊排程資料，確保是替換而不是累加
+    console.log('🧹 清除舊的排程資料...');
+    
+    // 清除所有訂單的 scheduled_items
+    db.orders.forEach(order => {
+      if (order.scheduled_items) {
+        order.scheduled_items = [];
+      }
+    });
+    
+    // 清除所有訂單項目的 production_date
+    if (db.order_items) {
+      db.order_items.forEach(item => {
+        item.production_date = null;
+      });
+    }
+    
+    // 儲存新的排程設定
     db.scheduling[productionDate] = {
       orders: orders,
       selectedOrders: selectedOrders,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
+    
+    // 只更新選中訂單的排程資料
+    orders.forEach(order => {
+      if (selectedOrders.includes(order.id)) {
+        const orderIndex = db.orders.findIndex(o => o.id === order.id);
+        if (orderIndex !== -1) {
+          // 🔥 關鍵：設定訂單的製作日期
+          db.orders[orderIndex].production_date = productionDate;
+          
+          // 創建新的 scheduled_items 陣列
+          db.orders[orderIndex].scheduled_items = [];
+          
+          // 添加排程項目 - 使用製造數量而不是原始數量
+          order.items.forEach(item => {
+            const manufacturingQty = manufacturingQuantities && manufacturingQuantities[item.product_name] 
+              ? manufacturingQuantities[item.product_name] 
+              : item.quantity;
+            
+            db.orders[orderIndex].scheduled_items.push({
+              product_name: item.product_name,
+              original_quantity: item.original_quantity || item.quantity,
+              scheduled_quantity: manufacturingQty
+            });
+          });
+        }
+        
+                // 更新訂單項目的製造日期
+                if (db.order_items) {
+                  db.order_items.forEach(item => {
+                    if (item.order_id === order.id) {
+                      item.production_date = productionDate;
+                      console.log(`設定訂單項目製作日期: 訂單${item.order_id} 產品${item.product_name} 日期${productionDate}`);
+                    }
+                  });
+                }
+      }
+    });
+    
+    // 更新庫存交易記錄 - 使用製造數量
+    if (manufacturingQuantities) {
+      console.log('📦 更新庫存交易記錄，製造數量:', manufacturingQuantities);
+      
+      // 初始化庫存交易記錄
+      if (!db.inventory_transactions) {
+        db.inventory_transactions = [];
+      }
+      
+      // 為每個產品添加製造交易記錄
+      Object.entries(manufacturingQuantities).forEach(([productName, quantity]) => {
+        if (quantity > 0) {
+          db.inventory_transactions.push({
+            id: Date.now() + Math.random(),
+            date: productionDate,
+            type: 'manufacturing',
+            product_name: productName,
+            quantity: quantity,
+            description: `排程製造 ${quantity} 瓶`,
+            created_at: new Date().toISOString()
+          });
+        }
+      });
+    }
+    
+    console.log('📋 排程已儲存，庫存交易記錄已更新');
     
     saveData();
     res.json({ success: true, message: '排程已儲存' });
@@ -256,8 +459,54 @@ app.post('/api/scheduling/save', (req, res) => {
   }
 });
 
+// 清除排程 - 清空所有排程資料
+app.post('/api/scheduling/clear', (req, res) => {
+  try {
+    const { orders, selectedOrders, productionDate } = req.body;
+    
+    console.log('🧹 清除排程 - 清空所有排程資料');
+    console.log('📅 製造日期:', productionDate);
+    console.log('📋 選中訂單:', selectedOrders);
+    
+    // 🔥 關鍵：清除所有排程資料，不只是選中的訂單
+    console.log('🧹 清除所有訂單的排程資料...');
+    
+    // 清除所有訂單的 scheduled_items 和排程狀態
+    db.orders.forEach(order => {
+      if (order.scheduled_items) {
+        order.scheduled_items = [];
+      }
+      // 重置排程狀態
+      order.scheduling_status = 'pending';
+      order.production_date = null;
+    });
+    
+    // 清除所有訂單項目的製作日期和狀態
+    if (db.order_items) {
+      console.log('🧹 清除所有訂單項目的製作日期和狀態...');
+      db.order_items.forEach(item => {
+        item.production_date = null;
+        item.status = 'pending';  // 🔥 重置狀態為待處理
+      });
+    }
+    
+    // 清除所有排程資料
+    if (db.scheduling) {
+      console.log('🧹 清除所有排程資料...');
+      db.scheduling = {};
+    }
+    
+    saveData();
+    console.log('✅ 所有排程資料已清除');
+    res.json({ success: true, message: '所有排程已清除' });
+  } catch (error) {
+    console.error('❌ 清除排程失敗:', error);
+    res.status(500).json({ error: '清除排程失敗: ' + error.message });
+  }
+});
+
 // 取得排程設定
-app.get('/api/scheduling/:date', checkDatabaseReady, (req, res) => {
+app.get('/api/scheduling/date/:date', checkDatabaseReady, (req, res) => {
   try {
     const { date } = req.params;
     const scheduling = db.scheduling && db.scheduling[date];
@@ -269,6 +518,34 @@ app.get('/api/scheduling/:date', checkDatabaseReady, (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: '取得排程失敗' });
+  }
+});
+
+// 清除排程數據
+app.delete('/api/scheduling/:date', checkDatabaseReady, (req, res) => {
+  try {
+    const { date } = req.params;
+    
+    if (db.scheduling && db.scheduling[date]) {
+      delete db.scheduling[date];
+      saveData();
+      res.json({ success: true, message: `排程數據已清除: ${date}` });
+    } else {
+      res.json({ success: true, message: `沒有找到排程數據: ${date}` });
+    }
+  } catch (error) {
+    res.status(500).json({ error: '清除排程失敗: ' + error.message });
+  }
+});
+
+// 清除所有排程數據
+app.delete('/api/scheduling', checkDatabaseReady, (req, res) => {
+  try {
+    db.scheduling = {};
+    saveData();
+    res.json({ success: true, message: '所有排程數據已清除' });
+  } catch (error) {
+    res.status(500).json({ error: '清除所有排程失敗: ' + error.message });
   }
 });
 
@@ -561,9 +838,102 @@ app.get('/api/inventory', checkDatabaseReady, (req, res) => {
       db.inventory_transactions = [];
     }
     
-    res.json(db.products);
+    // 獲取查詢日期（如果提供）
+    const { date } = req.query;
+    const queryDate = date ? new Date(date) : new Date();
+    
+    // 計算考慮未來出貨的實際庫存
+    const products = db.products.map(product => {
+      let actualStock = product.current_stock || 0;
+      
+      // 🔥 修正：訂單製作界面只顯示真實庫存，不扣除任何訂單
+      // 這個API用於訂單製作界面，讓人員知道當前實際可用庫存
+      if (date) {
+        console.log(`🔍 訂單製作界面查詢日期: ${date}, 產品: ${product.name}`);
+        console.log(`📊 ${product.name}: 真實庫存 ${product.current_stock || 0} (不扣除任何訂單)`);
+        // 保持原始庫存，不扣除任何訂單
+        actualStock = product.current_stock || 0;
+      }
+      
+      return {
+        ...product,
+        current_stock: actualStock,
+        original_stock: product.current_stock || 0,
+        future_deductions: date ? (product.current_stock || 0) - actualStock : 0
+      };
+    });
+    
+    res.json(products);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ 排程庫存計算（主排程版本）
+app.get('/api/inventory/scheduling', checkDatabaseReady, (req, res) => {
+  try {
+    const { date } = req.query;
+    const db = getLatestData();
+    
+    const products = db.products.map(product => {
+      let actualStock = product.current_stock || 0;
+      
+      if (date) {
+        const schedules = db.orders.filter(
+          o =>
+            o.production_date === date &&
+            o.scheduling_status === 'scheduled' &&
+            Array.isArray(o.merged_orders) &&
+            o.merged_orders.length > 0 &&
+            !o.linked_schedule_id
+        );
+
+        let scheduledDeduction = 0;
+        schedules.forEach(s => {
+          s.scheduled_items?.forEach(i => {
+            if (i.product_name === product.name) {
+              scheduledDeduction += i.scheduled_quantity || 0;
+            }
+          });
+        });
+
+        actualStock = Math.max(0, (product.current_stock || 0) - scheduledDeduction);
+      }
+      
+      return {
+        ...product,
+        current_stock: actualStock,
+        original_stock: product.current_stock || 0,
+      };
+    });
+    
+    res.json(products);
+  } catch (err) {
+    console.error('❌ Inventory scheduling error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ 工具：清理舊排程（只留主排程單）
+app.post('/api/tools/cleanup-legacy-schedules', checkDatabaseReady, (req, res) => {
+  try {
+    const db = getLatestData();
+    const before = db.orders.length;
+
+    db.orders = db.orders.filter(o =>
+      (Array.isArray(o.merged_orders) && o.merged_orders.length > 0) ||   // 主排程
+      o.linked_schedule_id ||                                             // 被合併的
+      o.scheduling_status === 'unscheduled' ||                            // 尚未排程
+      o.status === 'completed'                                            // 已完成
+    );
+
+    const after = db.orders.length;
+    saveData(db);
+    console.log(`🧹 清理完成：刪除 ${(before - after)} 筆舊排程單`);
+    res.json({ success: true, removed: before - after });
+  } catch (err) {
+    console.error('清理舊排程錯誤:', err);
+    res.status(500).json({ success: false, message: '清理失敗' });
   }
 });
 
@@ -583,6 +953,16 @@ app.get('/api/inventory/transactions', checkDatabaseReady, (req, res) => {
     res.json(sortedTransactions);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得庫存異動記錄（單數端點，用於向後兼容）
+app.get('/api/inventory/transaction', checkDatabaseReady, (req, res) => {
+  try {
+    const transactions = db.inventory_transactions || [];
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: '取得庫存異動記錄失敗' });
   }
 });
 
@@ -718,82 +1098,59 @@ app.delete('/api/inventory/transactions/reset', checkDatabaseReady, (req, res) =
   }
 });
 
-// 取得廚房製作清單 (按產品統計數量)
+// ✅ 廚房製作清單 API（新版：正確顯示主排程）
 app.get('/api/kitchen/production/:date', checkDatabaseReady, (req, res) => {
   const { date } = req.params;
   
   try {
-    console.log('請求製作清單日期:', date);
-    const allOrders = Array.isArray(db.orders) ? db.orders : [];
-    const allOrderItems = Array.isArray(db.order_items) ? db.order_items : [];
-    console.log('所有訂單數:', allOrders.length);
-    console.log('所有訂單項目數:', allOrderItems.length);
-    
-    // 取得指定日期的訂單（支援多種日期格式），排除現場訂單
-    const orders = allOrders.filter(order => {
-      if (!order || !order.order_date) return false;
-      let orderDateStr;
-      let requestDate;
-      try {
-        orderDateStr = new Date(order.order_date).toISOString().split('T')[0];
-        requestDate = new Date(date).toISOString().split('T')[0];
-      } catch (e) {
-        return false;
-      }
-      const directMatch = order.order_date === date;
-      const dateMatch = orderDateStr === requestDate;
-      const isNotWalkin = order.order_type !== 'walk-in'; // 排除現場訂單
-      // 簡化日誌避免過多輸出
-      return (directMatch || dateMatch) && isNotWalkin;
-    });
-    
-    console.log('匹配的訂單:', orders);
-    const orderIds = orders.map(order => order.id);
-    
-    // 取得這些訂單的項目
-    const orderItems = allOrderItems.filter(item => orderIds.includes(item.order_id));
-    console.log('訂單項目:', orderItems);
-    
-    // 按產品名稱和單價分組統計
+    const db = getLatestData();
+    const orders = db.orders || [];
+
+    // 🔍 檢查所有該日期的主排程單
+    const schedules = orders.filter(o =>
+      o.production_date?.toString().trim() === date.toString().trim() &&
+      Array.isArray(o.merged_orders) &&
+      o.merged_orders.length > 0 &&
+      (o.linked_schedule_id === null || o.linked_schedule_id === undefined)
+    );
+
+    console.log(`🍳 [Kitchen] ${date} 主排程檢查結果：${schedules.length} 筆`);
+    schedules.forEach(s =>
+      console.log(`→ ${s.id}: ${s.scheduled_items?.map(i => `${i.product_name}×${i.scheduled_quantity}`).join(', ')}`)
+    );
+
+    if (!schedules.length) {
+      console.warn('⚠️ 沒有主排程單');
+      return res.json([]);
+    }
+
+    // 統計產品總數
     const productStats = {};
-    
-    orderItems.forEach(item => {
-      const key = `${item.product_name}_${item.unit_price}_${item.is_gift || false}`;
-      if (!productStats[key]) {
-        productStats[key] = {
-          product_name: item.product_name,
-          total_quantity: 0,
-          unit_price: item.unit_price,
-          total_amount: 0,
-          order_date: date,
-          delivery_date: orders.find(o => o.id === item.order_id)?.delivery_date || '',
-          order_status: orders.find(o => o.id === item.order_id)?.status || 'pending',
-          pending_quantity: 0,
-          completed_quantity: 0,
-          pending_count: 0,
-          completed_count: 0,
-          is_gift: item.is_gift || false
-        };
-      }
-      
-      productStats[key].total_quantity += item.quantity;
-      productStats[key].total_amount += item.quantity * item.unit_price;
-      
-      if (item.status === 'pending') {
-        productStats[key].pending_quantity += item.quantity;
-        productStats[key].pending_count += 1;
-      } else if (item.status === 'completed') {
-        productStats[key].completed_quantity += item.quantity;
-        productStats[key].completed_count += 1;
-      }
+    schedules.forEach(schedule => {
+      schedule.scheduled_items.forEach(item => {
+        const name = item.product_name;
+        if (!productStats[name]) {
+          productStats[name] = {
+            product_name: name,
+                total_quantity: 0,
+                completed_quantity: 0,
+            pending_quantity: 0,
+          };
+        }
+        productStats[name].total_quantity += Number(item.scheduled_quantity || 0);
+        productStats[name].completed_quantity += Number(item.completed_quantity || 0);
+      });
     });
-    
-    const result = Object.values(productStats).sort((a, b) => a.product_name.localeCompare(b.product_name));
-    return res.json(result);
-  } catch (error) {
-    console.error('Kitchen production 查詢錯誤:', error);
-    // 發生例外時回傳空陣列避免前端崩潰
-    return res.status(200).json([]);
+
+    Object.values(productStats).forEach(p => {
+      p.pending_quantity = Math.max(0, p.total_quantity - p.completed_quantity);
+    });
+
+    res.json(Object.values(productStats));
+
+  } catch (err) {
+    console.error('❌ [Kitchen] 查詢錯誤:', err);
+    res.status(500).json([]);
   }
 });
 
@@ -812,9 +1169,11 @@ app.get('/api/orders/customers/:date', checkDatabaseReady, (req, res) => {
   
   try {
     console.log('請求客戶訂單日期:', date);
-    const allOrders = Array.isArray(db.orders) ? db.orders : [];
-    const allCustomers = Array.isArray(db.customers) ? db.customers : [];
-    const allItems = Array.isArray(db.order_items) ? db.order_items : [];
+    // 動態讀取最新數據
+    const latestDb = getLatestData();
+    const allOrders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    const allCustomers = Array.isArray(latestDb.customers) ? latestDb.customers : [];
+    const allItems = Array.isArray(latestDb.order_items) ? latestDb.order_items : [];
     
     // 取得指定日期的訂單（支援多種日期格式）
     const orders = allOrders.filter(order => {
@@ -1096,7 +1455,7 @@ app.get('/api/orders/shipping-weekly/:startDate', (req, res) => {
         item_count: dayItems.length,
         total_quantity: dayItems.reduce((sum, item) => sum + item.quantity, 0),
         total_amount: totalAmount,
-        pending_orders: dayOrders.filter(order => order.status === 'pending').length,
+        pending_orders: dayOrders.filter(order => order.status === 'pending' || order.status === 'scheduled').length,
         shipped_orders: dayOrders.filter(order => order.status === 'completed' || order.status === 'shipped').length
       };
     });
@@ -1112,54 +1471,7 @@ app.get('/api/orders/shipping-weekly/:startDate', (req, res) => {
   }
 });
 
-// 取得一週訂單數量概覽
-app.get('/api/orders/weekly/:startDate', (req, res) => {
-  const { startDate } = req.params;
-  
-  try {
-    // 計算一週的日期範圍
-    const start = new Date(startDate);
-    const dates = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-    
-    // 建立日期對應的結果
-    const result = {};
-    dates.forEach(date => {
-      result[date] = {
-        date: date,
-        order_count: 0,
-        item_count: 0,
-        total_quantity: 0
-      };
-    });
-    
-    // 查詢每一天的訂單數量
-    dates.forEach(date => {
-      const dayOrders = db.orders.filter(order => order.order_date === date);
-      const orderIds = dayOrders.map(order => order.id);
-      const dayItems = db.order_items.filter(item => orderIds.includes(item.order_id));
-      
-      result[date] = {
-        date: date,
-        order_count: dayOrders.length,
-        item_count: dayItems.length,
-        total_quantity: dayItems.reduce((sum, item) => sum + item.quantity, 0)
-      };
-    });
-    
-    res.json({
-      start_date: startDate,
-      dates: dates,
-      weekly_data: Object.values(result)
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// 取得一週訂單數量概覽 - 已移除重複的API，使用基於排程數據的版本
 
 // 匯出當日訂單 CSV
 app.get('/api/orders/export/:date', (req, res) => {
@@ -1524,10 +1836,15 @@ app.post('/api/orders', (req, res) => {
       return;
     }
     items.forEach(item => {
+      // 根據 product_id 查找產品名稱
+      const product = db.products.find(p => p.id === parseInt(item.product_id));
+      const productName = product ? product.name : (item.product_name || `產品${item.product_id}`);
+      
       const newItem = {
         id: (db.order_items && db.order_items.length > 0) ? Math.max(...db.order_items.map(oi => oi.id), 0) + 1 : 1,
         order_id: newOrder.id,
-        product_name: item.product_name,
+        product_id: parseInt(item.product_id),
+        product_name: productName,
         quantity: parseInt(item.quantity),
         unit_price: parseFloat(item.unit_price),
         special_notes: item.special_notes || '',
@@ -1689,6 +2006,28 @@ app.delete('/api/orders/:id', (req, res) => {
     db.order_items = db.order_items.filter(item => item.order_id !== parseInt(id));
     console.log('已刪除訂單項目:', deletedItems);
     
+    // 清理相關的排程數據
+    if (db.scheduling) {
+      Object.keys(db.scheduling).forEach(date => {
+        const schedulingData = db.scheduling[date];
+        if (schedulingData && schedulingData.orders) {
+          // 移除已刪除的訂單
+          schedulingData.orders = schedulingData.orders.filter(order => order.id !== parseInt(id));
+          // 更新選中的訂單列表
+          if (schedulingData.selectedOrders) {
+            schedulingData.selectedOrders = schedulingData.selectedOrders.filter(orderId => orderId !== parseInt(id));
+          }
+          // 如果沒有訂單了，刪除整個排程
+          if (schedulingData.orders.length === 0) {
+            delete db.scheduling[date];
+          }
+        }
+      });
+    }
+    
+    // 🧩 重建庫存（使用統一函式）
+    rebuildInventoryFromOrders();
+    
     // 保存到檔案
     saveData();
     
@@ -1716,16 +2055,77 @@ app.put('/api/orders/:id/shipping-status', checkDatabaseReady, (req, res) => {
       return res.status(404).json({ error: '訂單不存在' });
     }
     
+    const order = db.orders[orderIndex];
+    
     // 更新訂單狀態
     db.orders[orderIndex].status = status;
     
-    // 如果標記為已出貨，同時更新所有訂單項目的狀態
+    // 如果標記為已出貨，同時更新所有訂單項目的狀態並減少庫存
     if (status === 'completed') {
+      console.log('🚚 訂單出貨，開始更新庫存...');
+      
+      // 更新訂單項目狀態
       db.order_items.forEach(item => {
         if (item.order_id === parseInt(id)) {
           item.status = 'completed';
         }
       });
+      
+      // 🔥 新增：出貨時減少庫存
+      // 檢查是否有 items 或 scheduled_items
+      const itemsToShip = order.items || order.scheduled_items || [];
+      
+      if (itemsToShip && itemsToShip.length > 0) {
+        console.log(`📦 開始處理 ${itemsToShip.length} 個出貨項目...`);
+        
+        itemsToShip.forEach(orderItem => {
+          const product = db.products.find(p => p.name === orderItem.product_name);
+          if (product) {
+            const oldStock = product.current_stock || 0;
+            // 🔥 修正：出貨應該按照客戶實際訂購數量，不是排程數量
+            // 優先使用 original_quantity（客戶實際訂購），然後是 quantity，最後才是 scheduled_quantity
+            const shippedQuantity = orderItem.original_quantity || orderItem.quantity || orderItem.scheduled_quantity || 0;
+            
+            console.log(`🔍 處理產品: ${orderItem.product_name}, 庫存: ${oldStock}, 出貨: ${shippedQuantity}`);
+            
+            // 檢查庫存是否足夠
+            if (oldStock < shippedQuantity) {
+              console.log(`⚠️ 庫存不足: ${orderItem.product_name} 庫存${oldStock}瓶，出貨${shippedQuantity}瓶`);
+              return res.status(400).json({ 
+                error: `庫存不足：${orderItem.product_name} 庫存${oldStock}瓶，無法出貨${shippedQuantity}瓶` 
+              });
+            }
+            
+            // 減少庫存
+            product.current_stock = oldStock - shippedQuantity;
+            console.log(`📦 庫存更新: ${orderItem.product_name} 從 ${oldStock} 減少到 ${product.current_stock} (-${shippedQuantity}瓶出貨)`);
+            
+            // 記錄庫存異動
+            if (!db.inventory_transactions) {
+              db.inventory_transactions = [];
+            }
+            
+            const newTransaction = {
+              id: Math.max(...db.inventory_transactions.map(t => t.id), 0) + 1,
+              product_id: product.id,
+              product_name: product.name,
+              transaction_type: 'out',
+              quantity: shippedQuantity,
+              transaction_date: new Date().toISOString(),
+              notes: `訂單 #${order.id} 出貨`,
+              created_by: 'system',
+              created_at: new Date().toISOString()
+            };
+            
+            db.inventory_transactions.push(newTransaction);
+            console.log(`📝 記錄庫存異動: ${product.name} 出貨 ${shippedQuantity}瓶`);
+          } else {
+            console.log(`⚠️ 找不到產品: ${orderItem.product_name}`);
+          }
+        });
+      } else {
+        console.log(`⚠️ 訂單 ${order.id} 沒有出貨項目`);
+      }
     }
     
     saveData();
@@ -1739,39 +2139,110 @@ app.put('/api/orders/:id/shipping-status', checkDatabaseReady, (req, res) => {
   }
 });
 
-// 更新產品製作狀態
-app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, (req, res) => {
+// ✅ 最終乾淨版：廚房標記完成 API（只計主排程，不重複計算）
+app.put('/api/kitchen/production/:date/:productName/status', checkDatabaseReady, async (req, res) => {
   const { date, productName } = req.params;
   const { status } = req.body;
-  
+  const decodedProductName = decodeURIComponent(productName);
+
   try {
-    console.log('更新產品製作狀態:', { date, productName, status });
-    
-    // 取得指定日期的訂單
-    const orders = db.orders.filter(order => order.order_date === date);
-    console.log('匹配的訂單:', orders.map(o => ({ id: o.id, order_date: o.order_date })));
-    const orderIds = orders.map(order => order.id);
-    console.log('訂單IDs:', orderIds);
-    
-    // 更新該日期該產品的所有訂單項目狀態
-    let updatedCount = 0;
-    db.order_items.forEach(item => {
-      if (orderIds.includes(item.order_id) && item.product_name === productName) {
-        console.log('更新訂單項目:', { order_id: item.order_id, product_name: item.product_name, old_status: item.status, new_status: status });
-        item.status = status;
-        updatedCount++;
-      }
+    console.log('📦 Kitchen 標記完成請求:', { date, productName: decodedProductName, status });
+
+    // 🔄 確保拿到最新 DB
+    let db = getLatestData();
+    const orders = db.orders || [];
+    const products = db.products || [];
+    const orderItems = db.order_items || [];
+
+    // 🗓️ 日期標準化
+    const normalizedDate = date.split('T')[0];
+    console.log('📅 Normalized Date =', normalizedDate);
+
+    // ✅ 找出主排程單（is_main_schedule 為真 或 merged_orders > 0）
+    const mainSchedules = orders.filter(o =>
+      o.production_date?.startsWith(normalizedDate) &&
+      (o.is_main_schedule === true ||
+        (Array.isArray(o.merged_orders) && o.merged_orders.length > 0)) &&
+      (!o.linked_schedule_id || o.linked_schedule_id.startsWith('schedule_'))
+    );
+
+    // 🧩 Debug：印出主排程清單
+    console.log('🔍 主排程檢查:',
+      mainSchedules.map(s => ({
+        id: s.id,
+        production_date: s.production_date,
+        merged_orders: s.merged_orders?.length,
+        scheduled_items: s.scheduled_items?.map(i => ({
+          name: i.product_name,
+          qty: i.scheduled_quantity,
+          status: i.status
+        }))
+      }))
+    );
+
+    if (!mainSchedules.length) {
+      console.warn(`⚠️ 找不到 ${normalizedDate} 的主排程單`);
+      return res.status(400).json({ error: '找不到主排程單，請確認排程是否建立成功' });
+    }
+
+    // ✅ 計算該產品的總排程數量
+    let totalScheduledQuantity = 0;
+    mainSchedules.forEach(order => {
+      order.scheduled_items?.forEach(item => {
+        if (item.product_name === decodedProductName) {
+          totalScheduledQuantity += Number(item.scheduled_quantity) || 0;
+        }
+      });
     });
-    console.log('更新的項目數量:', updatedCount);
-    
-    // 廚房製作完成不應該自動更新訂單狀態
-    // 訂單狀態應該由出貨管理來控制
-    // 這裡只更新製作狀態，不影響訂單的整體狀態
-    
-    saveData();
-    res.json({ message: '產品狀態更新成功' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.log(`📊 ${decodedProductName} 總排程數量: ${totalScheduledQuantity}`);
+
+    // ✅ 防重複：確認是否已標記完成
+    let alreadyCompleted = false;
+    if (status === 'completed') {
+      orderItems.forEach(item => {
+        if (item.product_name === decodedProductName &&
+            item.production_date?.startsWith(normalizedDate) &&
+            item.status === 'completed') {
+          alreadyCompleted = true;
+        }
+      });
+    }
+
+    // ✅ 更新主排程與項目狀態
+    mainSchedules.forEach(order => {
+      order.status = status;
+      order.scheduling_status = status;
+      order.scheduled_items?.forEach(item => {
+        if (item.product_name === decodedProductName) {
+          item.status = status;
+        }
+      });
+    });
+
+    // ✅ 更新庫存（僅未完成過的項目）
+    if (status === 'completed' && !alreadyCompleted) {
+      const product = products.find(p => p.name === decodedProductName);
+      if (product) {
+        const oldStock = product.current_stock || 0;
+        product.current_stock = oldStock + totalScheduledQuantity;
+        console.log(`✅ 庫存更新: ${decodedProductName} ${oldStock} → ${product.current_stock} (+${totalScheduledQuantity})`);
+      }
+    } else if (alreadyCompleted) {
+      console.log(`⚠️ ${decodedProductName} 已完成過，跳過庫存更新`);
+    }
+
+    // 💾 儲存 + reload
+    await saveData(db);
+    db = getLatestData();
+
+    res.json({
+      success: true,
+      message: `${decodedProductName} 狀態已更新為 ${status}`,
+      added: status === 'completed' && !alreadyCompleted ? totalScheduledQuantity : 0
+    });
+  } catch (err) {
+    console.error('❌ Kitchen API 錯誤:', err);
+    res.status(500).json({ error: '伺服器錯誤，請稍後再試' });
   }
 });
 
@@ -1873,7 +2344,7 @@ app.get('/api/orders/history/export/csv', (req, res) => {
   }
 });
 
-// 取得週統計數據
+// 取得週統計數據（基於訂單建立日期）
 app.get('/api/orders/weekly/:startDate', (req, res) => {
   const { startDate } = req.params;
   
@@ -1887,45 +2358,79 @@ app.get('/api/orders/weekly/:startDate', (req, res) => {
     
     console.log('週統計日期範圍:', start.toISOString().split('T')[0], '到', end.toISOString().split('T')[0]);
     
-    // 取得這個日期範圍內的所有訂單
-    const orders = db.orders.filter(order => {
-      const orderDate = new Date(order.order_date);
-      return orderDate >= start && orderDate <= end;
-    });
-    
-    console.log('週統計匹配的訂單:', orders);
-    const orderIds = orders.map(order => order.id);
-    
-    // 取得這些訂單的項目
-    const orderItems = db.order_items.filter(item => orderIds.includes(item.order_id));
-    console.log('週統計訂單項目:', orderItems);
-    
-    // 按日期和產品統計
+    // 🔥 修正：基於訂單建立日期統計，而不是排程數據
     const weeklyStats = {};
     
-    orders.forEach(order => {
-      const date = order.order_date;
-      if (!weeklyStats[date]) {
-        weeklyStats[date] = {};
-      }
+    // 遍歷一週的每一天
+    for (let i = 0; i < 7; i++) {
+      const currentDate = new Date(start);
+      currentDate.setDate(start.getDate() + i);
+      const dateStr = currentDate.toISOString().split('T')[0];
       
-      const items = orderItems.filter(item => item.order_id === order.id);
-      items.forEach(item => {
-        if (!weeklyStats[date][item.product_name]) {
-          weeklyStats[date][item.product_name] = {
+      // 🔥 修正：查詢該日期的訂單（基於 order_date）
+      const dayOrders = db.orders.filter(order => {
+        if (!order || !order.order_date) return false;
+        const orderDate = new Date(order.order_date).toISOString().split('T')[0];
+        return orderDate === dateStr;
+      });
+      
+      if (dayOrders.length > 0) {
+        console.log(`日期 ${dateStr} 找到 ${dayOrders.length} 個訂單`);
+        weeklyStats[dateStr] = {};
+        
+        // 統計每個產品的數量
+        dayOrders.forEach(order => {
+          const orderItems = db.order_items.filter(item => item.order_id === order.id);
+          orderItems.forEach(item => {
+            if (!weeklyStats[dateStr][item.product_name]) {
+              weeklyStats[dateStr][item.product_name] = {
             product_name: item.product_name,
             total_quantity: 0,
             unit_price: item.unit_price,
             total_amount: 0
           };
         }
-        weeklyStats[date][item.product_name].total_quantity += item.quantity;
-        weeklyStats[date][item.product_name].total_amount += item.quantity * item.unit_price;
+            weeklyStats[dateStr][item.product_name].total_quantity += item.quantity || 0;
+            weeklyStats[dateStr][item.product_name].total_amount += (item.quantity || 0) * (item.unit_price || 0);
       });
     });
+      } else {
+        console.log(`日期 ${dateStr} 沒有訂單數據`);
+        weeklyStats[dateStr] = {};
+      }
+    }
     
-    res.json(weeklyStats);
+    // 🔥 修正：返回前端期望的格式
+    res.json({
+      weekly_data: Object.values(weeklyStats).map((dayData, index) => {
+        const date = new Date(start);
+        date.setDate(start.getDate() + index);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        // 計算該日期的總數量和總金額
+        let totalQuantity = 0;
+        let totalAmount = 0;
+        let orderCount = 0;
+        
+        if (weeklyStats[dateStr] && Object.keys(weeklyStats[dateStr]).length > 0) {
+          Object.values(weeklyStats[dateStr]).forEach(product => {
+            totalQuantity += product.total_quantity || 0;
+            totalAmount += product.total_amount || 0;
+            orderCount += 1;
+          });
+        }
+        
+        return {
+          date: dateStr,
+          total_quantity: totalQuantity,
+          total_amount: totalAmount,
+          order_count: orderCount,
+          products: weeklyStats[dateStr] || {}
+        };
+      })
+    });
   } catch (error) {
+    console.error('週統計錯誤:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2036,12 +2541,14 @@ app.get('/api/kitchen/walkin-orders', (req, res) => {
         };
       }
       
-      productStats[key].total_quantity += item.quantity;
+      // 使用製造數量而不是原始訂單數量
+      const manufacturingQuantity = item.scheduled_quantity || item.quantity || 0;
+      productStats[key].total_quantity += manufacturingQuantity;
       
       if (item.status === 'pending') {
-        productStats[key].pending_quantity += item.quantity;
+        productStats[key].pending_quantity += manufacturingQuantity;
       } else if (item.status === 'completed') {
-        productStats[key].completed_quantity += item.quantity;
+        productStats[key].completed_quantity += manufacturingQuantity;
       }
     });
     
@@ -2228,249 +2735,11 @@ app.get('/api/shared/reports/daily/:date', checkDatabaseReady, (req, res) => {
   }
 });
 
-// 智能排程配置管理
-app.get('/api/scheduling/config', checkDatabaseReady, (req, res) => {
-  try {
-    // 初始化排程配置（如果不存在）
-    if (!db.scheduling_config) {
-      db.scheduling_config = {
-        daily_capacity: 40,        // 日產能
-        staff_count: 1,           // 人力數量
-        minutes_per_bottle: 1.5,  // 每瓶製作時間（分鐘）
-        min_stock: 10,            // 最低庫存
-        working_hours: 8,         // 工作時數
-        break_time: 60,           // 休息時間（分鐘）
-        enable_inventory_replenishment: false, // 是否啟用庫存補貨
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      saveData();
-    }
-    
-    res.json(db.scheduling_config);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// 更新智能排程配置
-app.put('/api/scheduling/config', checkDatabaseReady, (req, res) => {
-  try {
-    const config = req.body;
-    
-    // 驗證配置參數
-    if (config.daily_capacity && (config.daily_capacity < 1 || config.daily_capacity > 200)) {
-      return res.status(400).json({ error: '日產能必須在1-200瓶之間' });
-    }
-    
-    if (config.staff_count && (config.staff_count < 1 || config.staff_count > 10)) {
-      return res.status(400).json({ error: '人力數量必須在1-10人之間' });
-    }
-    
-    if (config.minutes_per_bottle && (config.minutes_per_bottle < 0.5 || config.minutes_per_bottle > 10)) {
-      return res.status(400).json({ error: '每瓶製作時間必須在0.5-10分鐘之間' });
-    }
-    
-    // 更新配置
-    if (!db.scheduling_config) {
-      db.scheduling_config = {};
-    }
-    
-    Object.assign(db.scheduling_config, config, {
-      updated_at: new Date().toISOString()
-    });
-    
-    saveData();
-    
-    console.log('智能排程配置已更新:', db.scheduling_config);
-    res.json({ 
-      message: '配置更新成功', 
-      config: db.scheduling_config 
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// 智能排程 API
-app.get('/api/scheduling/orders', checkDatabaseReady, (req, res) => {
-  try {
-    const { date } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    
-    console.log('智能排程API請求:', { date: targetDate });
-    console.log('資料庫訂單數量:', db.orders ? db.orders.length : 0);
-    
-    // 獲取排程配置
-    const config = db.scheduling_config || {
-      daily_capacity: 40,
-      staff_count: 1,
-      minutes_per_bottle: 1.5,
-      min_stock: 10,
-      working_hours: 8,
-      break_time: 60
-    };
-    
-    // 智能排程分析
-    const scheduleAnalysis = generateSmartSchedule(targetDate, config);
-    
-    res.json({
-      date: targetDate,
-      config: config,
-      analysis: scheduleAnalysis,
-      orders: scheduleAnalysis.planned_production,
-      summary: scheduleAnalysis.summary,
-      recommendations: scheduleAnalysis.recommendations
-    });
-    
-  } catch (error) {
-    console.error('智能排程API錯誤:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// 智能排程生成函數
-function generateSmartSchedule(targetDate, config) {
-  try {
-    // 分析多日訂單需求（包括前一日、當日和未來幾日），讓遞延能帶入隔日
-    const maxDays = config.max_rolling_days || 3;
-    const start = new Date(targetDate);
-    start.setDate(start.getDate() - 1);
-    const startDateForRolling = start.toISOString().split('T')[0];
-    const multiDayOrderDemandAll = analyzeMultiDayOrderDemand(startDateForRolling, maxDays + 1);
-    
-    // 如果沒有任何訂單需求，不生成任何排程
-    if (multiDayOrderDemandAll.length === 0) {
-      return {
-        planned_production: [],
-        time_schedule: [],
-        summary: {
-          total_bottles: 0,
-          efficiency: '0%',
-          estimated_time: '0分鐘',
-          remaining_capacity: config.daily_capacity
-        },
-        recommendations: ['近期無訂單，無需生產'],
-        inventory_analysis: [],
-        sales_trend: [],
-        daily_order_demand: [],
-        multi_day_schedule: [],
-        deferred_orders: []
-      };
-    }
-    
-    // 分析庫存狀況
-    const inventoryAnalysis = analyzeInventory();
-    
-    // 分析銷售趨勢
-    const salesTrend = analyzeSalesTrend();
-    
-    // 生成多日生產計劃（含前一日）
-    const multiDayPlanAll = generateMultiDayProductionPlan(inventoryAnalysis, salesTrend, multiDayOrderDemandAll, config);
-    // 過濾出從 targetDate 起的區間，供前端顯示
-    const multiDayPlan = multiDayPlanAll.filter(day => day.date >= targetDate);
-    
-    // 獲取當日計劃
-    const todayPlan = multiDayPlan.find(day => day.date === targetDate) || { 
-      planned_production: [], 
-      time_schedule: [], 
-      remaining_capacity: config.daily_capacity 
-    };
-    
-    // 計算當日時間安排
-    const timeSchedule = calculateTimeSchedule(todayPlan.planned_production, config);
-    
-    // 生成建議
-    const recommendations = generateMultiDayRecommendations(inventoryAnalysis, multiDayPlan, config);
-    
-    // 獲取遞延訂單
-    const deferredOrders = getDeferredOrders(multiDayPlan, targetDate);
-    
-    return {
-      planned_production: todayPlan.planned_production,
-      time_schedule: timeSchedule,
-      summary: {
-        total_bottles: todayPlan.planned_production.reduce((sum, item) => sum + item.quantity, 0),
-        efficiency: ((todayPlan.planned_production.reduce((sum, item) => sum + item.quantity, 0) / config.daily_capacity) * 100).toFixed(1) + '%',
-        estimated_time: calculateTotalTime(todayPlan.planned_production, config),
-        remaining_capacity: todayPlan.remaining_capacity
-      },
-      recommendations: recommendations,
-      inventory_analysis: inventoryAnalysis,
-      sales_trend: salesTrend,
-      multi_day_schedule: multiDayPlan,
-      deferred_orders: deferredOrders
-    };
-  } catch (error) {
-    console.error('智能排程生成錯誤:', error);
-    return {
-      planned_production: [],
-      time_schedule: [],
-      summary: { total_bottles: 0, efficiency: '0%', estimated_time: '0分鐘', remaining_capacity: config.daily_capacity },
-      recommendations: ['排程生成失敗，請檢查系統配置'],
-      inventory_analysis: [],
-      sales_trend: []
-    };
-  }
-}
 
-// 分析庫存狀況
-function analyzeInventory() {
-  const analysis = [];
-  
-  db.products.forEach(product => {
-    const currentStock = product.current_stock || 0;
-    const minStock = db.scheduling_config?.min_stock || 10;
-    const priority = getProductPriority(product.name);
-    
-    const stockDeficit = Math.max(0, minStock - currentStock);
-    const urgencyScore = (stockDeficit * 2) + (priority ? (10 - priority) : 0);
-    
-    analysis.push({
-      product_id: product.id,
-      product_name: product.name,
-      current_stock: currentStock,
-      min_stock: minStock,
-      stock_deficit: stockDeficit,
-      priority: priority,
-      urgency_score: urgencyScore,
-      status: currentStock < minStock ? 'urgent' : currentStock < minStock * 1.5 ? 'warning' : 'normal'
-      });
-    });
-    
-  return analysis.sort((a, b) => b.urgency_score - a.urgency_score);
-}
 
-// 分析銷售趨勢
-function analyzeSalesTrend() {
-  const trend = [];
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  
-  db.products.forEach(product => {
-    const recentOrders = db.orders.filter(order => {
-      const orderDate = new Date(order.order_time || order.created_at);
-      return orderDate >= sevenDaysAgo && order.status !== 'cancelled';
-    });
-    
-    let totalSold = 0;
-    recentOrders.forEach(order => {
-      const items = db.order_items.filter(item => 
-        item.order_id === order.id && item.product_name === product.name
-      );
-      totalSold += items.reduce((sum, item) => sum + item.quantity, 0);
-    });
-    
-    trend.push({
-      product_id: product.id,
-      product_name: product.name,
-      weekly_sales: totalSold,
-      daily_average: (totalSold / 7).toFixed(1)
-    });
-  });
-  
-  return trend.sort((a, b) => b.weekly_sales - a.weekly_sales);
-}
 
 // 分析當日訂單需求
 function analyzeDailyOrderDemand(targetDate) {
@@ -3020,17 +3289,17 @@ app.get('/', (req, res) => {
   });
 });
 
-// 服務靜態文件
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
-});
+// 服務靜態文件 - 移到所有 API 路由之後
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+// });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Local access: http://localhost:${PORT}`);
-  console.log(`Network access: http://[YOUR_IP]:${PORT}`);
-  console.log(`Visit http://localhost:${PORT} to view the application`);
-});
+// app.listen(PORT, '0.0.0.0', () => {
+//   console.log(`Server is running on port ${PORT}`);
+//   console.log(`Local access: http://localhost:${PORT}`);
+//   console.log(`Network access: http://[YOUR_IP]:${PORT}`);
+//   console.log(`Visit http://localhost:${PORT} to view the application`);
+// });
 
 // 參數測試與AI優化 API
 app.post('/api/scheduling/parameter-test', checkDatabaseReady, (req, res) => {
@@ -3692,6 +3961,831 @@ function generateNeighborSolution(currentSolution, testParameters) {
   
   return neighbor;
 }
+
+// ==================== 訂單排程管理 API ====================
+
+// 取得年份列表（有訂單的年份）
+app.get('/api/scheduling/years', checkDatabaseReady, (req, res) => {
+  try {
+    const latestDb = getLatestData();
+    const orders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    
+    // 提取所有年份
+    const years = [...new Set(orders.map(order => {
+      const date = new Date(order.order_date);
+      return date.getFullYear();
+    }))].sort();
+    
+    // 為每個年份計算統計
+    const yearStats = years.map(year => {
+      const yearOrders = orders.filter(order => {
+        const orderYear = new Date(order.order_date).getFullYear();
+        return orderYear === year;
+      });
+      
+      return {
+        year: year,
+        total_orders: yearOrders.length,
+        pending_orders: yearOrders.filter(o => o.status === 'pending').length,
+        scheduled_orders: yearOrders.filter(o => o.scheduling_status === 'scheduled').length,
+        completed_orders: yearOrders.filter(o => o.status === 'completed').length
+      };
+    });
+    
+    res.json(yearStats);
+  } catch (error) {
+    console.error('取得年份列表失敗:', error);
+    res.status(500).json({ error: '取得年份列表失敗' });
+  }
+});
+
+// 取得指定年份的月份列表
+app.get('/api/scheduling/years/:year/months', checkDatabaseReady, (req, res) => {
+  try {
+    const year = parseInt(req.params.year);
+    const latestDb = getLatestData();
+    const orders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    
+    // 篩選該年份的訂單
+    const yearOrders = orders.filter(order => {
+      const orderYear = new Date(order.order_date).getFullYear();
+      return orderYear === year;
+    });
+    
+    // 提取月份
+    const months = [...new Set(yearOrders.map(order => {
+      const date = new Date(order.order_date);
+      return date.getMonth() + 1; // 0-11 -> 1-12
+    }))].sort();
+    
+    // 為每個月份計算統計
+    const monthStats = months.map(month => {
+      const monthOrders = yearOrders.filter(order => {
+        const orderMonth = new Date(order.order_date).getMonth() + 1;
+        return orderMonth === month;
+      });
+      
+      return {
+        year: year,
+        month: month,
+        month_name: new Date(year, month - 1).toLocaleString('zh-TW', { month: 'long' }),
+        total_orders: monthOrders.length,
+        pending_orders: monthOrders.filter(o => o.status === 'pending').length,
+        scheduled_orders: monthOrders.filter(o => o.scheduling_status === 'scheduled').length,
+        completed_orders: monthOrders.filter(o => o.status === 'completed').length
+      };
+    });
+    
+    res.json(monthStats);
+  } catch (error) {
+    console.error('取得月份列表失敗:', error);
+    res.status(500).json({ error: '取得月份列表失敗' });
+  }
+});
+
+// 取得指定月份的日期列表
+app.get('/api/scheduling/years/:year/months/:month/days', checkDatabaseReady, (req, res) => {
+  try {
+    const year = parseInt(req.params.year);
+    const month = parseInt(req.params.month);
+    const latestDb = getLatestData();
+    const orders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    
+    // 篩選該月份的訂單
+    const monthOrders = orders.filter(order => {
+      const date = new Date(order.order_date);
+      return date.getFullYear() === year && date.getMonth() + 1 === month;
+    });
+    
+    // 提取日期
+    const days = [...new Set(monthOrders.map(order => {
+      const date = new Date(order.order_date);
+      return date.getDate();
+    }))].sort();
+    
+    // 為每個日期計算統計
+    const dayStats = days.map(day => {
+      const dayOrders = monthOrders.filter(order => {
+        const orderDay = new Date(order.order_date).getDate();
+        return orderDay === day;
+      });
+      
+      // 計算產能使用情況
+      const totalQuantity = dayOrders.reduce((sum, order) => {
+        return sum + (order.items ? order.items.reduce((itemSum, item) => itemSum + item.quantity, 0) : 0);
+      }, 0);
+      
+      return {
+        year: year,
+        month: month,
+        day: day,
+        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        total_orders: dayOrders.length,
+        pending_orders: dayOrders.filter(o => o.status === 'pending').length,
+        scheduled_orders: dayOrders.filter(o => o.scheduling_status === 'scheduled').length,
+        completed_orders: dayOrders.filter(o => o.status === 'completed').length,
+        total_quantity: totalQuantity,
+        production_capacity: 100, // 預設產能，可從設定檔讀取
+        capacity_used: totalQuantity,
+        capacity_remaining: Math.max(0, 100 - totalQuantity)
+      };
+    });
+    
+    res.json(dayStats);
+  } catch (error) {
+    console.error('取得日期列表失敗:', error);
+    res.status(500).json({ error: '取得日期列表失敗' });
+  }
+});
+
+
+// 取得指定日期的訂單列表
+app.get('/api/scheduling/dates/:date/orders', checkDatabaseReady, (req, res) => {
+  try {
+    const date = req.params.date;
+    const latestDb = getLatestData();
+    const orders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    const customers = Array.isArray(latestDb.customers) ? latestDb.customers : [];
+    
+    // 篩選該日期的訂單（優先使用production_date，如果沒有則使用order_date）
+    // 🔥 修正：只排除明確完成的訂單，允許 scheduled 狀態顯示
+    const dayOrders = orders.filter(order => 
+      (order.production_date === date || order.order_date === date) &&
+      order.scheduling_status !== 'completed'  // 只排除明確標記為 completed 的排程
+    );
+    
+    console.log(`📅 ${date} 找到 ${dayOrders.length} 個訂單，狀態分布:`, 
+      dayOrders.map(o => ({ id: o.id, status: o.status, scheduling_status: o.scheduling_status }))
+    );
+    
+    // 合併客戶資料和訂單項目
+    const ordersWithCustomer = dayOrders.map(order => {
+      const customer = customers.find(c => String(c.id) === String(order.customer_id));
+      const orderItems = Array.isArray(latestDb.order_items) ? 
+        latestDb.order_items.filter(item => item.order_id === order.id) : [];
+      
+      return {
+        ...order,
+        customer_name: customer ? customer.name : '現場訂單',
+        items: orderItems.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          special_notes: item.special_notes,
+          is_gift: item.is_gift || false
+        }))
+      };
+    });
+    
+    res.json({ orders: ordersWithCustomer });
+  } catch (error) {
+    console.error('取得日期訂單失敗:', error);
+    res.status(500).json({ error: '取得日期訂單失敗' });
+  }
+});
+
+// 刪除指定日期的排程
+app.delete('/api/scheduling/delete/:date', checkDatabaseReady, (req, res) => {
+  try {
+    const date = req.params.date;
+    
+    console.log(`🗑️ 刪除日期 ${date} 的排程`);
+    
+    // 直接從檔案讀取資料
+    let fileData;
+    if (fs.existsSync(LOCAL_DATA_FILE)) {
+      const data = fs.readFileSync(LOCAL_DATA_FILE, 'utf8');
+      fileData = JSON.parse(data);
+    } else {
+      fileData = db;
+    }
+    
+    // 🔥 找到該日期的所有排程訂單（包括主排程單）
+    const scheduledOrders = fileData.orders.filter(order => 
+      order.production_date === date
+    );
+    
+    // 🔥 找到主排程單
+    const masterSchedules = scheduledOrders.filter(order => 
+      order.id && order.id.toString().startsWith('schedule_')
+    );
+    
+    // 🔥 找到被主排程單合併的客戶訂單
+    const mergedOrders = [];
+    masterSchedules.forEach(master => {
+      if (master.merged_orders) {
+        master.merged_orders.forEach(orderId => {
+          const order = fileData.orders.find(o => o.id === orderId);
+          if (order) {
+            mergedOrders.push(order);
+          }
+        });
+      }
+    });
+    
+    console.log(`找到 ${masterSchedules.length} 個主排程單`);
+    console.log(`找到 ${mergedOrders.length} 個被合併的客戶訂單`);
+    
+    // 🔥 完全刪除主排程單
+    fileData.orders = fileData.orders.filter(order => 
+      !(order.id && order.id.toString().startsWith('schedule_') && order.production_date === date)
+    );
+    
+    // 🔥 重置被合併的客戶訂單狀態（但保留訂單本身）
+    mergedOrders.forEach(order => {
+      order.status = 'pending';
+      order.scheduling_status = 'unscheduled';
+      order.production_date = null;
+      order.linked_schedule_id = null;
+      delete order.scheduled_items;
+      delete order.scheduled_at;
+    });
+    
+    // 清除該日期的排程記錄
+    if (fileData.scheduled_orders) {
+      fileData.scheduled_orders = fileData.scheduled_orders.filter(scheduled => 
+        scheduled.production_date !== date
+      );
+    }
+    
+    // 清除該日期的庫存交易記錄
+    if (fileData.inventory_transactions) {
+      fileData.inventory_transactions = fileData.inventory_transactions.filter(transaction => 
+        transaction.date !== date || transaction.type !== 'manufacturing'
+      );
+    }
+    
+    // 清除該日期的排程數據 (db.scheduling)
+    if (fileData.scheduling && fileData.scheduling[date]) {
+      delete fileData.scheduling[date];
+      console.log(`清除排程數據: ${date}`);
+    }
+    
+    // 🔥 同步更新內存中的 db 對象
+    db.orders = fileData.orders;
+    db.order_items = fileData.order_items;
+    
+    if (db.scheduling && db.scheduling[date]) {
+      delete db.scheduling[date];
+      console.log(`清除內存排程數據: ${date}`);
+    }
+    
+    // 🔥 直接儲存到檔案
+    fs.writeFileSync(LOCAL_DATA_FILE, JSON.stringify(fileData, null, 2), 'utf8');
+    console.log('✅ 資料已儲存到本地檔案 (data.local.json)');
+    console.log(`🗑️ 已完全刪除 ${date} 的排程：${masterSchedules.length} 個主排程單 + ${mergedOrders.length} 個客戶訂單`);
+    
+    res.json({ 
+      success: true, 
+      message: `已刪除日期 ${date} 的所有排程`,
+      deletedOrders: scheduledOrders.length
+    });
+    
+  } catch (error) {
+    console.error('刪除排程失敗:', error);
+    res.status(500).json({ error: '刪除排程失敗' });
+  }
+});
+
+// ✅ 合併訂單排程 API（最終穩定版）
+app.post('/api/scheduling/confirm', checkDatabaseReady, (req, res) => {
+  try {
+    const { orderIds, selectedDate, manufacturingQuantities } = req.body;
+    console.log('🚀 [Confirm] 開始排程:', { orderIds, selectedDate, manufacturingQuantities });
+
+    if (!orderIds?.length) {
+      return res.status(400).json({ success: false, message: '請選擇要排程的訂單' });
+    }
+    if (!selectedDate) {
+      return res.status(400).json({ success: false, message: '請選擇生產日期' });
+    }
+
+    // 1️⃣ 載入最新資料
+    const db = getLatestData();
+    if (!db.orders) db.orders = [];
+
+    // 2️⃣ 清除同日期舊主排程單（防止重複）
+    const oldSchedules = db.orders.filter(
+      o =>
+        o.production_date === selectedDate &&
+        Array.isArray(o.merged_orders) &&
+        o.merged_orders.length > 0 &&
+        !o.linked_schedule_id
+    );
+
+    if (oldSchedules.length > 0) {
+      console.log(`🧹 [Confirm] 清除 ${oldSchedules.length} 筆舊主排程 (${selectedDate})`);
+      const oldIds = oldSchedules.map(o => o.id);
+      db.orders = db.orders.filter(o => !oldIds.includes(o.id));
+    }
+
+    // 3️⃣ 找出要排程的訂單
+    const ordersToSchedule = db.orders.filter(o => orderIds.includes(o.id));
+    if (!ordersToSchedule.length) {
+      return res.status(400).json({ success: false, message: '找不到要排程的訂單' });
+    }
+
+    // 4️⃣ 建立合併後的排程項目
+    const mergedScheduledItems = Object.entries(manufacturingQuantities).map(([productName, qty]) => ({
+      product_name: productName,
+      scheduled_quantity: Number(qty) || 0,
+      completed_quantity: 0,
+      status: 'scheduled'
+    }));
+
+    // 5️⃣ 建立主排程單
+    const masterSchedule = {
+      id: `schedule_${Date.now()}`,
+      production_date: selectedDate,
+      scheduled_items: mergedScheduledItems,
+      merged_orders: orderIds,
+      status: 'scheduled',
+      scheduling_status: 'scheduled',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // 寫入資料庫
+    db.orders.push(masterSchedule);
+
+    // 6️⃣ 更新子訂單狀態
+    ordersToSchedule.forEach(o => {
+      o.status = 'scheduled';
+      o.scheduling_status = 'merged';
+      o.linked_schedule_id = masterSchedule.id;
+      o.production_date = selectedDate;
+      o.scheduled_at = new Date().toISOString();
+    });
+
+    // 7️⃣ 實際保存
+    saveData(db);
+
+    // ✅ Debug 確認：查看主排程是否成功寫入
+    const verify = getLatestData().orders.filter(o =>
+      o.production_date === selectedDate &&
+      Array.isArray(o.merged_orders) &&
+      o.merged_orders.length > 0 &&
+      !o.linked_schedule_id
+    );
+    console.log(`✅ [Confirm] 已建立主排程 ${masterSchedule.id}，驗證結果：`, verify);
+
+    res.json({
+      success: true,
+      message: `已建立主排程單，生產日期：${selectedDate}`,
+      schedule_id: masterSchedule.id,
+      merged_orders: orderIds.length
+    });
+
+  } catch (err) {
+    console.error('❌ [Confirm] 排程錯誤:', err);
+    res.status(500).json({ success: false, message: '排程失敗', error: err.message });
+  }
+});
+
+// ✅ 一鍵重建今日主排程（不刪訂單，只清排程）
+app.post('/api/scheduling/reset-today', checkDatabaseReady, (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    console.log(`🚀 開始重建 ${today} 的主排程`);
+
+    // 1️⃣ 找出今日的主排程單
+    const oldSchedules = db.orders.filter(
+      o =>
+        o.production_date === today &&
+        Array.isArray(o.merged_orders) &&
+        o.merged_orders.length > 0 &&
+        o.scheduling_status === 'scheduled'
+    );
+
+    console.log(`🧹 找到 ${oldSchedules.length} 筆主排程單，開始清除`);
+
+    // 2️⃣ 清除主排程單
+    if (oldSchedules.length > 0) {
+      db.orders = db.orders.filter(o => !oldSchedules.includes(o));
+    }
+
+    // 3️⃣ 清除所有訂單的排程狀態（但保留訂單本身）
+    db.orders.forEach(o => {
+      if (o.scheduling_status === 'merged' && o.linked_schedule_id) {
+        o.scheduling_status = 'unscheduled';
+        o.status = 'pending';
+        o.linked_schedule_id = null;
+        o.production_date = null;
+      }
+    });
+
+    // 4️⃣ 找出所有尚未排程的訂單（排除主排程單）
+    const pendingOrders = db.orders.filter(
+      o =>
+        !o.linked_schedule_id &&
+        !(o.id && o.id.toString().startsWith('schedule_')) && // 🔥 排除主排程單
+        (o.scheduling_status === 'pending' ||
+          o.scheduling_status === 'unscheduled' ||
+          o.scheduling_status === 'scheduled') // 🔥 包含舊的 scheduled 狀態
+    );
+
+    console.log(`📦 找到 ${pendingOrders.length} 筆待排程訂單`);
+
+    if (pendingOrders.length === 0) {
+      saveData(db);
+      return res.json({ success: true, message: '今日沒有可排程的訂單' });
+    }
+
+    // 5️⃣ 計算今日總製造數量
+    const manufacturingQuantities = {};
+    pendingOrders.forEach(order => {
+      const items = db.order_items.filter(i => i.order_id === order.id);
+      items.forEach(i => {
+        manufacturingQuantities[i.product_name] =
+          (manufacturingQuantities[i.product_name] || 0) + (i.quantity || 0);
+      });
+    });
+
+    // 6️⃣ 建立新的主排程單
+    const mergedScheduledItems = Object.entries(manufacturingQuantities).map(
+      ([productName, qty]) => ({
+        product_name: productName,
+        scheduled_quantity: Number(qty) || 0,
+        completed_quantity: 0,
+        status: 'pending',
+      })
+    );
+
+    const masterSchedule = {
+      id: `schedule_${Date.now()}`,
+      production_date: today,
+      scheduled_items: mergedScheduledItems,
+      merged_orders: pendingOrders.map(o => o.id),
+      status: 'scheduled',
+      scheduling_status: 'scheduled',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    db.orders.push(masterSchedule);
+
+    // 7️⃣ 更新所有訂單的狀態（連結新主排程）
+    pendingOrders.forEach(o => {
+      o.status = 'scheduled';
+      o.scheduling_status = 'merged';
+      o.linked_schedule_id = masterSchedule.id;
+      o.production_date = today;
+      o.scheduled_at = new Date().toISOString();
+    });
+
+    // 8️⃣ 同步全局 db 變數並儲存
+    // 將修改後的資料同步到全局 db 變數
+    Object.assign(db, db);
+    saveData();
+
+    console.log(
+      `✅ 重建完成：主排程 ${masterSchedule.id}，合併 ${pendingOrders.length} 筆訂單`
+    );
+
+    res.json({
+      success: true,
+      message: `已重建 ${today} 的主排程`,
+      schedule_id: masterSchedule.id,
+      merged_orders: pendingOrders.length,
+    });
+  } catch (err) {
+    console.error('重置今日排程錯誤:', err);
+    res.status(500).json({ success: false, message: '重置今日排程失敗' });
+  }
+});
+
+// 排程訂單到指定日期
+app.post('/api/scheduling/schedule', checkDatabaseReady, (req, res) => {
+  try {
+    const { orderIds, productionDate, capacity, manufacturingQuantities } = req.body;
+    
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ error: '請選擇要排程的訂單' });
+    }
+    
+    // 如果productionDate為null，表示取消排程
+    if (productionDate === null) {
+      return handleCancelScheduling(orderIds, res);
+    }
+    
+    if (!productionDate) {
+      return res.status(400).json({ error: '請指定生產日期' });
+    }
+    
+    const latestDb = getLatestData();
+    const orders = Array.isArray(latestDb.orders) ? latestDb.orders : [];
+    
+    // 更新訂單狀態
+    const updatedOrders = orders.map(order => {
+      if (orderIds.includes(order.id)) {
+        // 🔥 修正：從 order_items 表獲取訂單項目，而不是 order.items
+        const orderItems = Array.isArray(latestDb.order_items) 
+          ? latestDb.order_items.filter(item => item.order_id === order.id)
+          : [];
+        
+        console.log(`📋 訂單 ${order.id} 的 order_items 數量:`, orderItems.length);
+        
+        const scheduledItems = orderItems.length > 0 
+          ? orderItems.map(item => {
+              // 🔥 使用 manufacturingQuantities 中的數量，如果沒有則使用原始數量
+              const manufacturingQty = manufacturingQuantities && manufacturingQuantities[item.product_name] 
+                ? manufacturingQuantities[item.product_name] 
+                : item.quantity;
+              
+              return {
+          product_name: item.product_name,
+          original_quantity: item.original_quantity || item.quantity,
+                scheduled_quantity: manufacturingQty
+              };
+            })
+          : [{ 
+              product_name: '未指定產品', 
+              original_quantity: 0, 
+              scheduled_quantity: 0 
+            }];
+        
+        console.log(`📋 訂單 ${order.id} 的 scheduled_items 長度:`, scheduledItems.length);
+        
+        return {
+          ...order,
+          status: 'scheduled',  // 🔥 修正：確保主狀態也是 scheduled
+          scheduling_status: 'scheduled',
+          production_date: productionDate,
+          scheduled_at: new Date().toISOString(),
+          scheduled_items: scheduledItems
+        };
+      }
+      return order;
+    });
+    
+    // 更新數據
+    latestDb.orders = updatedOrders;
+    db.orders = updatedOrders; // 同時更新全局db對象
+    
+    // 🧩 重建庫存（使用統一函式）
+    rebuildInventoryFromOrders();
+    
+    saveData();
+    
+    res.json({ 
+      success: true, 
+      message: `已成功排程 ${orderIds.length} 筆訂單到 ${productionDate}`,
+      scheduled_orders: orderIds.length
+    });
+  } catch (error) {
+    console.error('排程訂單失敗:', error);
+    res.status(500).json({ error: '排程訂單失敗' });
+  }
+});
+
+// 自動排程API
+app.post('/api/scheduling/auto', checkDatabaseReady, (req, res) => {
+  try {
+    const { startDate, dailyCapacity, respectCutoff, skipWeekends, onlyPending } = req.body;
+    
+    if (!startDate || !dailyCapacity) {
+      return res.status(400).json({ error: '請提供起算日期和每日產能' });
+    }
+    
+    const orders = Array.isArray(db.orders) ? db.orders : [];
+    const orderItems = Array.isArray(db.order_items) ? db.order_items : [];
+    
+    // 為每個訂單添加items字段
+    const ordersWithItems = orders.map(order => {
+      const items = orderItems.filter(item => item.order_id === order.id);
+      return { ...order, items };
+    });
+    
+    // 篩選待排程的訂單
+    console.log(`總訂單數: ${ordersWithItems.length}`);
+    console.log(`onlyPending: ${onlyPending}`);
+    
+    let pendingOrders = ordersWithItems.filter(order => {
+      console.log(`檢查訂單 ${order.id}: status=${order.status}, scheduling_status=${order.scheduling_status}`);
+      if (onlyPending && order.status !== 'pending') return false;
+      if (order.scheduling_status === 'scheduled') return false;
+      return true;
+    });
+    
+    console.log(`找到 ${pendingOrders.length} 個待排程訂單`);
+    
+    // 按優先順序排序（可以根據業務需求調整）
+    pendingOrders.sort((a, b) => new Date(a.order_date) - new Date(b.order_date));
+    
+    const scheduleResults = [];
+    let currentDate = new Date(startDate);
+    let remainingCapacity = Number(dailyCapacity);
+    
+    for (const order of pendingOrders) {
+      // 檢查是否需要跳過週末
+      if (skipWeekends) {
+        while (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          remainingCapacity = Number(dailyCapacity);
+        }
+      }
+      
+      // 計算訂單總數量
+      const orderQuantity = order.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
+      console.log(`訂單 ${order.id} 數量計算:`, orderQuantity);
+      
+      // 如果數量為0，跳過此訂單
+      if (orderQuantity === 0) {
+        console.log(`跳過訂單 ${order.id}，數量為0`);
+        continue;
+      }
+      
+      if (orderQuantity <= remainingCapacity) {
+        // 可以完全排程
+        const productionDate = currentDate.toISOString().split('T')[0];
+        
+        // 更新訂單排程
+        const orderIndex = orders.findIndex(o => o.id === order.id);
+        if (orderIndex !== -1) {
+          orders[orderIndex].scheduling_status = 'scheduled';
+          orders[orderIndex].production_date = productionDate;
+          orders[orderIndex].scheduled_at = new Date().toISOString();
+          
+          // 創建scheduled_items
+          orders[orderIndex].scheduled_items = order.items?.map(item => ({
+            product_name: item.product_name,
+            original_quantity: item.original_quantity || item.quantity,
+            scheduled_quantity: item.quantity
+          })) || [];
+        }
+        
+        remainingCapacity -= orderQuantity;
+        scheduleResults.push({
+          orderId: order.id,
+          customerName: order.customer_name,
+          productionDate,
+          quantity: orderQuantity
+        });
+        console.log(`排程結果: 訂單${order.id}, 數量${orderQuantity}, 日期${productionDate}`);
+        
+        // 如果產能用完，移到下一天
+        if (remainingCapacity <= 0) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          remainingCapacity = Number(dailyCapacity);
+        }
+      } else {
+        // 需要拆分到多天
+        let remainingOrderQuantity = orderQuantity;
+        const productionDate = currentDate.toISOString().split('T')[0];
+        
+        // 第一天能排多少
+        const firstDayQuantity = remainingCapacity;
+        remainingOrderQuantity -= firstDayQuantity;
+        
+        // 更新訂單排程（第一天）
+        const orderIndex = orders.findIndex(o => o.id === order.id);
+        if (orderIndex !== -1) {
+          orders[orderIndex].scheduling_status = 'scheduled';
+          orders[orderIndex].production_date = productionDate;
+          orders[orderIndex].scheduled_at = new Date().toISOString();
+          
+          // 創建scheduled_items（按比例分配）
+          orders[orderIndex].scheduled_items = order.items?.map(item => {
+            const ratio = firstDayQuantity / orderQuantity;
+            return {
+              product_name: item.product_name,
+              original_quantity: item.original_quantity || item.quantity,
+              scheduled_quantity: Math.floor(item.quantity * ratio)
+            };
+          }) || [];
+        }
+        
+        scheduleResults.push({
+          orderId: order.id,
+          customerName: order.customer_name,
+          productionDate,
+          quantity: firstDayQuantity,
+          note: `拆分排程，第一天${firstDayQuantity}瓶`
+        });
+        
+        // 移到下一天繼續排程剩餘數量
+        currentDate.setDate(currentDate.getDate() + 1);
+        remainingCapacity = Number(dailyCapacity);
+        
+        // 繼續排程剩餘數量
+        while (remainingOrderQuantity > 0) {
+          if (skipWeekends) {
+            while (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+              currentDate.setDate(currentDate.getDate() + 1);
+            }
+          }
+          
+          const nextDayQuantity = Math.min(remainingOrderQuantity, remainingCapacity);
+          const nextDayDate = currentDate.toISOString().split('T')[0];
+          
+          // 創建新的排程記錄（這裡簡化處理，實際可能需要更複雜的邏輯）
+          scheduleResults.push({
+            orderId: order.id,
+            customerName: order.customer_name,
+            productionDate: nextDayDate,
+            quantity: nextDayQuantity,
+            note: `拆分排程，第${scheduleResults.filter(r => r.orderId === order.id).length + 1}天${nextDayQuantity}瓶`
+          });
+          
+          remainingOrderQuantity -= nextDayQuantity;
+          remainingCapacity -= nextDayQuantity;
+          
+          if (remainingCapacity <= 0) {
+            currentDate.setDate(currentDate.getDate() + 1);
+            remainingCapacity = Number(dailyCapacity);
+          }
+        }
+      }
+    }
+    
+    // 更新數據庫
+    db.orders = orders;
+    saveData();
+    
+    res.json({
+      success: true,
+      message: `自動排程完成，共排程 ${scheduleResults.length} 筆`,
+      scheduledOrders: scheduleResults.length,
+      results: scheduleResults
+    });
+    
+  } catch (error) {
+    console.error('自動排程失敗:', error);
+    res.status(500).json({ error: '自動排程失敗' });
+  }
+});
+
+// ✅ 排程完成 API（僅主排程生效）
+app.post('/api/scheduling/complete', checkDatabaseReady, (req, res) => {
+  try {
+    const { orderIds, completionDate } = req.body;
+    if (!orderIds?.length) {
+      return res.status(400).json({ error: '請選擇要標記完成的訂單' });
+    }
+    
+    const db = getLatestData();
+    const orders = db.orders;
+    const products = db.products || [];
+
+    const completedSchedules = orders.filter(
+      o =>
+        orderIds.includes(o.id) &&
+        Array.isArray(o.merged_orders) &&
+        o.merged_orders.length > 0 &&
+        !o.linked_schedule_id
+    );
+
+    if (!completedSchedules.length) {
+      return res.status(400).json({ error: '找不到主排程單' });
+    }
+
+    // 更新主排程單狀態
+    completedSchedules.forEach(schedule => {
+      schedule.status = 'completed';
+      schedule.scheduling_status = 'completed';
+      schedule.completed_at = completionDate || new Date().toISOString();
+    });
+
+    // 計算庫存增加
+    completedSchedules.forEach(schedule => {
+      schedule.scheduled_items.forEach(item => {
+        const product = products.find(p => p.name === item.product_name);
+        const qty = item.scheduled_quantity || 0;
+        if (product) {
+          product.current_stock = (product.current_stock || 0) + qty;
+          console.log(`✅ ${product.name} 庫存 +${qty} → ${product.current_stock}`);
+      } else {
+          console.warn(`⚠️ 找不到產品：${item.product_name}`);
+        }
+      });
+    });
+
+    saveData(db);
+    res.json({ success: true, message: '排程完成，庫存已更新', updated: completedSchedules.length });
+  } catch (err) {
+    console.error('❌ 排程完成錯誤:', err);
+    res.status(500).json({ error: '排程完成失敗' });
+  }
+});
+
+// 廚房生產清單API - 已移除重複的API，使用第一個基於排程數據的API
+
+// 服務靜態文件（必須在所有 API 路由之後）
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+});
+
+// 啟動服務器
+app.listen(PORT, '0.0.0.0', () => {
+  // 設定全域 db 引用
+  globalThis.db = db;
+  
+  console.log(`Server is running on port ${PORT}`);
+  console.log(`Local access: http://localhost:${PORT}`);
+  console.log(`Network access: http://[YOUR_IP]:${PORT}`);
+  console.log(`Visit http://localhost:${PORT} to view the application`);
+});
 
 // 優雅關閉
 process.on('SIGINT', () => {

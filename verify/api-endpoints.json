@@ -1,0 +1,22 @@
+[
+  "GET /api/orders/unfinished",
+  "GET /api/orders/history",
+  "POST /api/scheduling/confirm",
+  "GET /api/kitchen/production/${id}",
+  "PUT /api/kitchen/production/${id}/${id}/status",
+  "GET /api/health",
+  "GET /api/products",
+  "GET /api/customers",
+  "POST /api/orders",
+  "GET /api/inventory/scheduling",
+  "GET /api/orders/weekly/${id}",
+  "GET /api/scheduling/dates/${id}/orders",
+  "POST /api/scheduling/complete",
+  "DELETE /api/scheduling/delete/${id}",
+  "GET /api/shipping-fee",
+  "GET /api/inventory/transactions",
+  "GET /api/orders/customers/history",
+  "GET /api/orders/customers/${id}",
+  "DELETE /api/orders/${id}",
+  "GET /api/orders/history/export/csv"
+]

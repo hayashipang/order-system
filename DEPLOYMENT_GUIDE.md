@@ -1,165 +1,183 @@
-# 🚀 果然盈訂單系統 - 部署指南
+# 🚀 雲端部署完整指南
 
-## 📋 快速部署選項
+## 📋 部署架構
 
-當您需要更新程式時，請告訴我以下資訊，我會為您執行對應的部署流程：
-
-### 🎯 標準溝通格式
 ```
-我要更新程式，修改了 [具體內容]，請用 [部署方式] 部署
-```
-
-### 📝 部署方式選擇
-
-#### **A. 快速部署** ⚡
-- **適用**：小修改、bug修復、不涉及資料變更
-- **命令**：`npm run deploy:quick`
-- **流程**：僅推送程式碼到Git，觸發自動部署
-- **時間**：2-3分鐘
-- **風險**：低（不涉及資料操作）
-
-#### **B. 完整部署** 🛡️
-- **適用**：重要功能更新、需要保留雲端資料
-- **命令**：`npm run deploy:full`
-- **流程**：備份雲端資料 → 推送程式碼 → 等待部署 → 恢復資料
-- **時間**：5-7分鐘
-- **風險**：極低（自動備份與恢復）
-
-#### **C. 手動部署** 🔧
-- **適用**：需要逐步確認、特殊情況
-- **流程**：我幫您逐步執行每個步驟
-- **時間**：視情況而定
-- **風險**：低（可隨時停止）
-
-### 🎯 部署範例
-
-#### 範例 1：小修改
-```
-我要更新程式，修改了POS系統的按鈕顏色，請用快速部署
+┌─────────────────┐    ┌─────────────────┐
+│   Vercel        │    │   Railway        │
+│   (前端)        │    │   (後端)        │
+│                 │    │                 │
+│   React App     │◄──►│   Node.js API   │
+│   Static Files  │    │   PostgreSQL    │
+└─────────────────┘    └─────────────────┘
 ```
 
-#### 範例 2：重要更新
-```
-我要更新程式，新增了客戶管理功能，請用完整部署
-```
+## 🎯 部署流程
 
-#### 範例 3：bug修復
-```
-我要更新程式，修復了庫存計算錯誤，請用完整部署
-```
+### 步驟 1: 準備工作
 
-#### 範例 4：手動控制
-```
-我要更新程式，修改了資料庫結構，請用手動部署
-```
+1. **安裝部署工具**
+   ```bash
+   npm install -g vercel @railway/cli
+   ```
 
-## 📋 部署流程詳解
+2. **登入服務**
+   ```bash
+   vercel login
+   railway login
+   ```
 
-### 🚀 快速部署流程
-1. 檢查程式碼狀態
-2. 推送程式碼到Git
-3. 觸發Vercel和Railway自動部署
-4. 確認部署完成
+### 步驟 2: 設定 Railway PostgreSQL
 
-### 🛡️ 完整部署流程
-1. **備份雲端資料**
-   - 備份產品資料
-   - 備份客戶資料
-   - 備份訂單資料
-2. **推送程式碼**
-   - 提交變更到Git
-   - 推送到GitHub
-3. **等待部署**
-   - 等待Vercel部署完成
-   - 等待Railway部署完成
-4. **恢復資料**
-   - 將備份資料重新上傳到雲端
-   - 確保資料完整性
+1. **創建 Railway 專案**
+   - 前往 https://railway.app
+   - 點擊 "New Project"
+   - 選擇 "Provision PostgreSQL"
 
-### 🔧 手動部署流程
-1. 根據您的需求逐步執行
-2. 每個步驟都會確認
-3. 可隨時停止或調整
+2. **獲取資料庫連接字串**
+   - 點擊 PostgreSQL 服務
+   - 切換到 "Variables" 頁籤
+   - 複製 "DATABASE_URL"
 
-## 🎯 部署前檢查清單
+3. **設定環境變數**
+   - 在 Railway 專案中設定 `DATABASE_URL`
+   - 設定 `NODE_ENV=production`
 
-### ✅ 程式碼準備
-- [ ] 本地測試通過
-- [ ] 功能正常運作
-- [ ] 無明顯錯誤
+### 步驟 3: 部署後端到 Railway
 
-### ✅ 資料保護
-- [ ] 確認雲端是否有重要資料
-- [ ] 選擇適當的部署方式
-- [ ] 如需保留資料，選擇完整部署
+1. **連接 GitHub 專案**
+   ```bash
+   railway link
+   ```
 
-### ✅ 部署確認
-- [ ] 確認部署方式
-- [ ] 確認更新內容
-- [ ] 準備測試計畫
+2. **部署**
+   ```bash
+   railway up
+   ```
 
-## 🚨 緊急情況處理
+3. **設定環境變數**
+   - 在 Railway Dashboard 中設定 `DATABASE_URL`
+   - 設定 `NODE_ENV=production`
 
-### 如果部署失敗
-1. 檢查錯誤訊息
-2. 確認網路連線
-3. 重新執行部署
-4. 如需要，手動恢復資料
+### 步驟 4: 部署前端到 Vercel
 
-### 如果資料遺失
-1. 檢查備份檔案
-2. 使用恢復腳本
-3. 手動恢復重要資料
+1. **建構前端**
+   ```bash
+   cd client
+   npm run build
+   ```
 
-## 📞 支援資訊
+2. **部署到 Vercel**
+   ```bash
+   vercel --prod
+   ```
 
-### 部署相關命令
+3. **設定環境變數**
+   - 在 Vercel Dashboard 中設定 `REACT_APP_API_URL`
+   - 值為你的 Railway 後端 URL
+
+### 步驟 5: 一鍵部署 (可選)
+
 ```bash
-# 快速部署
-npm run deploy:quick
-
-# 完整部署
-npm run deploy:full
-
-# 僅備份資料
-npm run backup
-
-# 僅恢復資料
-npm run restore
+node deploy.js
 ```
 
-### 重要網址
-- **Order System**: https://order-system-greenwins-projects.vercel.app/
-- **POS System**: https://order-system-greenwins-projects.vercel.app/pos
-- **Railway API**: https://order-system-production-6ef7.up.railway.app
+## 🔧 環境變數設定
 
-### 備份檔案位置
-- 本地備份：`cloud_data_backups/`
-- 備份格式：`complete_backup_YYYYMMDD_HHMMSS.json`
+### Railway (後端)
+```env
+DATABASE_URL=postgresql://postgres:[PASSWORD]@[HOST]:[PORT]/railway
+NODE_ENV=production
+PORT=3001
+```
 
-## 🎉 部署完成後
+### Vercel (前端)
+```env
+REACT_APP_API_URL=https://your-app-name.up.railway.app
+```
 
-### 驗證步驟
-1. 檢查Order System是否正常
-2. 檢查POS System是否正常
-3. 測試主要功能
-4. 確認資料完整性
+## 📊 部署後檢查
 
-### 測試建議
-- 登入系統
-- 檢查產品列表
-- 測試POS銷售
-- 確認庫存更新
-- 檢查歷史訂單
+### 1. 檢查後端健康狀態
+```bash
+curl https://your-app-name.up.railway.app/api/health
+```
+
+### 2. 檢查前端是否正常載入
+- 訪問 Vercel 提供的 URL
+- 確認 API 調用正常
+
+### 3. 檢查資料庫連接
+- 在 Railway Dashboard 中查看 PostgreSQL 服務狀態
+- 確認資料庫表格已創建
+
+## 🛠️ 本地開發 vs 雲端部署
+
+### 本地開發
+```bash
+npm run dev          # 使用 SQLite
+npm run dev-json     # 使用 JSON 文件
+```
+
+### 雲端部署
+```bash
+npm start            # 使用 PostgreSQL (Railway)
+```
+
+## 🔄 資料庫遷移
+
+### 從本地 SQLite 遷移到雲端 PostgreSQL
+
+1. **導出本地數據**
+   ```bash
+   # 手動備份 order_system.db 文件
+   ```
+
+2. **在雲端初始化資料庫**
+   ```bash
+   # Railway 會自動創建表格
+   ```
+
+3. **重新導入數據**
+   - 通過前端界面重新創建數據
+   - 或使用 API 批量導入
+
+## 🚨 常見問題
+
+### 1. CORS 錯誤
+- 確認 Vercel 的 `REACT_APP_API_URL` 設定正確
+- 檢查 Railway 的 CORS 設定
+
+### 2. 資料庫連接失敗
+- 確認 Railway 的 `DATABASE_URL` 設定正確
+- 檢查 PostgreSQL 服務是否正常運行
+
+### 3. 環境變數未生效
+- 重新部署服務
+- 檢查環境變數名稱是否正確
+
+## 💰 費用說明
+
+### Railway (免費方案)
+- 資料庫: 1GB
+- 每月請求: 500,000 次
+- 足夠小型專案使用
+
+### Vercel (免費方案)
+- 每月請求: 100,000 次
+- 頻寬: 100GB
+- 足夠小型專案使用
+
+## 🎉 完成！
+
+部署完成後，你的系統將：
+- ✅ 使用雲端 PostgreSQL 資料庫
+- ✅ 前端部署在 Vercel
+- ✅ 後端部署在 Railway
+- ✅ 支援多用戶同時使用
+- ✅ 數據持久化存儲
+- ✅ 自動擴展和備份
 
 ---
 
-## 💡 使用提示
-
-1. **小修改**：使用快速部署
-2. **重要更新**：使用完整部署
-3. **不確定**：使用手動部署
-4. **有重要資料**：一定要用完整部署
-5. **緊急修復**：可以先用快速部署，後續再完整部署
-
-**記住：完整部署會自動保護您的資料，是最安全的選擇！** 🛡️
+**現在你可以專注於功能開發，不用擔心部署問題！** 🚀
