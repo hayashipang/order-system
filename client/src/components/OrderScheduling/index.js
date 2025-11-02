@@ -376,8 +376,6 @@ export default function OrderScheduling() {
                 <thead>
                   {/* ✅ 第一行：顯示訂單日期 */}
                   <tr style={{ backgroundColor: "#f0f9ff" }}>
-                    <th style={{ padding: "8px", textAlign: "left", border: "1px solid #e5e7eb", fontWeight: 600 }}>
-                    </th>
                     {(() => {
                       // 獲取選中的訂單並排序（與下方保持一致）
                       const selectedOrders = allUnScheduledOrders.filter(o => selectedOrderIds.includes(o.id));
@@ -385,8 +383,10 @@ export default function OrderScheduling() {
                         if (shopeePriority) {
                           const isShopeeA = a.source && (a.source.includes('蝦皮') || a.source.toLowerCase().includes('shopee'));
                           const isShopeeB = b.source && (b.source.includes('蝦皮') || b.source.toLowerCase().includes('shopee'));
-                          if (isShopeeA && !isShopeeB) return -1;
-                          if (!isShopeeA && isShopeeB) return 1;
+                          // 蝦皮訂單靠右：非蝦皮的靠左，蝦皮的靠右
+                          if (isShopeeA && !isShopeeB) return 1;  // A是蝦皮，B不是 → A靠右
+                          if (!isShopeeA && isShopeeB) return -1; // A不是，B是蝦皮 → B靠右
+                          // 同類型內按日期排序
                           const dateA = a.order_date || a.created_at || '';
                           const dateB = b.order_date || b.created_at || '';
                           return dateA.localeCompare(dateB);
@@ -420,7 +420,11 @@ export default function OrderScheduling() {
                         );
                       });
                     })()}
+                    {/* ✅ 訂單總數量空列 */}
                     <th style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", fontWeight: 600, backgroundColor: "#f3f4f6" }}>
+                    </th>
+                    {/* ✅ 產品名稱空列（移到訂單總數量之後） */}
+                    <th style={{ padding: "8px", textAlign: "left", border: "1px solid #e5e7eb", fontWeight: 600 }}>
                     </th>
                     <th style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", fontWeight: 600, backgroundColor: "#e0f2fe" }}>
                     </th>
@@ -429,22 +433,19 @@ export default function OrderScheduling() {
                   </tr>
                   {/* ✅ 第二行：顯示客戶名稱和其他標題 */}
                   <tr style={{ backgroundColor: "#f9fafb" }}>
-                    <th style={{ padding: "8px", textAlign: "left", border: "1px solid #e5e7eb", fontWeight: 600 }}>
-                      產品名稱
-                    </th>
                     {(() => {
                       // 獲取選中的訂單
                       const selectedOrders = allUnScheduledOrders.filter(o => selectedOrderIds.includes(o.id));
                       
-                      // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠左；否則按日期排序
+                      // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠右；否則按日期排序
                       selectedOrders.sort((a, b) => {
                         if (shopeePriority) {
                           const isShopeeA = a.source && (a.source.includes('蝦皮') || a.source.toLowerCase().includes('shopee'));
                           const isShopeeB = b.source && (b.source.includes('蝦皮') || b.source.toLowerCase().includes('shopee'));
                           
-                          // 蝦皮訂單優先（靠左）
-                          if (isShopeeA && !isShopeeB) return -1;
-                          if (!isShopeeA && isShopeeB) return 1;
+                          // 蝦皮訂單靠右：非蝦皮的靠左，蝦皮的靠右
+                          if (isShopeeA && !isShopeeB) return 1;  // A是蝦皮，B不是 → A靠右
+                          if (!isShopeeA && isShopeeB) return -1; // A不是，B是蝦皮 → B靠右
                           
                           // 同類型內按日期排序
                           const dateA = a.order_date || a.created_at || '';
@@ -478,8 +479,13 @@ export default function OrderScheduling() {
                         );
                       });
                     })()}
+                    {/* ✅ 訂單總數量 */}
                     <th style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", fontWeight: 600, backgroundColor: "#f3f4f6" }}>
                       訂單總數量
+                    </th>
+                    {/* ✅ 產品名稱（移到訂單總數量之後） */}
+                    <th style={{ padding: "8px", textAlign: "left", border: "1px solid #e5e7eb", fontWeight: 600 }}>
+                      產品名稱
                     </th>
                     <th style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", fontWeight: 600, backgroundColor: "#e0f2fe" }}>
                       製造
@@ -494,15 +500,15 @@ export default function OrderScheduling() {
                     const productName = product.name;
                     const selectedOrders = allUnScheduledOrders.filter(o => selectedOrderIds.includes(o.id));
                     
-                    // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠左；否則按日期排序（與表頭保持一致）
+                    // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠右；否則按日期排序（與表頭保持一致）
                     selectedOrders.sort((a, b) => {
                       if (shopeePriority) {
                         const isShopeeA = a.source && (a.source.includes('蝦皮') || a.source.toLowerCase().includes('shopee'));
                         const isShopeeB = b.source && (b.source.includes('蝦皮') || b.source.toLowerCase().includes('shopee'));
                         
-                        // 蝦皮訂單優先（靠左）
-                        if (isShopeeA && !isShopeeB) return -1;
-                        if (!isShopeeA && isShopeeB) return 1;
+                        // 蝦皮訂單靠右：非蝦皮的靠左，蝦皮的靠右
+                        if (isShopeeA && !isShopeeB) return 1;  // A是蝦皮，B不是 → A靠右
+                        if (!isShopeeA && isShopeeB) return -1; // A不是，B是蝦皮 → B靠右
                         
                         // 同類型內按日期排序
                         const dateA = a.order_date || a.created_at || '';
@@ -535,9 +541,6 @@ export default function OrderScheduling() {
                     
                     return (
                       <tr key={product.id}>
-                        <td style={{ padding: "8px", border: "1px solid #e5e7eb", fontWeight: 500 }}>
-                          {productName}
-                        </td>
                         {quantities.map((qty, idx) => {
                           const order = selectedOrders[idx];
                           // ✅ 如果是蝦皮訂單，背景色改為橘色（與表頭一致）
@@ -557,34 +560,97 @@ export default function OrderScheduling() {
                             </td>
                           );
                         })}
+                        {/* ✅ 訂單總數量 */}
                         <td style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", fontWeight: 600, backgroundColor: "#f3f4f6" }}>
                           {total}
                         </td>
-                        {/* ✅ 製造欄位（可編輯） */}
+                        {/* ✅ 產品名稱（移到訂單總數量之後） */}
+                        <td style={{ padding: "8px", border: "1px solid #e5e7eb", fontWeight: 500 }}>
+                          {productName}
+                        </td>
+                        {/* ✅ 製造欄位（可編輯，帶 +/- 按鈕） */}
                         <td style={{ padding: "4px", textAlign: "center", border: "1px solid #e5e7eb", backgroundColor: "#e0f2fe" }}>
-                          <input
-                            type="number"
-                            min="0"
-                            value={Math.max(manufacturingQty, 0)}
-                            onChange={(e) => {
-                              const newManufacturingQty = Math.max(parseInt(e.target.value) || 0, 0);
-                              // 計算調整量 = 新製造量 - 基礎製造量
-                              const adjustment = newManufacturingQty - baseManufacturingQty;
-                              setManualAdjustments(prev => ({
-                                ...prev,
-                                [productName]: adjustment
-                              }));
-                            }}
-                            style={{
-                              width: "80px",
-                              padding: "4px",
-                              textAlign: "center",
-                              border: "1px solid #0284c7",
-                              borderRadius: 4,
-                              fontSize: 14,
-                              fontWeight: 600
-                            }}
-                          />
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
+                            <button
+                              onClick={() => {
+                                const currentQty = Math.max(manufacturingQty, 0);
+                                const newManufacturingQty = Math.max(currentQty - 1, 0);
+                                const adjustment = newManufacturingQty - baseManufacturingQty;
+                                setManualAdjustments(prev => ({
+                                  ...prev,
+                                  [productName]: adjustment
+                                }));
+                              }}
+                              style={{
+                                background: "#dc3545",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                width: "28px",
+                                height: "28px",
+                                cursor: "pointer",
+                                fontSize: "16px",
+                                fontWeight: "bold",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 0
+                              }}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={Math.max(manufacturingQty, 0)}
+                              onChange={(e) => {
+                                const newManufacturingQty = Math.max(parseInt(e.target.value) || 0, 0);
+                                // 計算調整量 = 新製造量 - 基礎製造量
+                                const adjustment = newManufacturingQty - baseManufacturingQty;
+                                setManualAdjustments(prev => ({
+                                  ...prev,
+                                  [productName]: adjustment
+                                }));
+                              }}
+                              style={{
+                                width: "60px",
+                                padding: "4px",
+                                textAlign: "center",
+                                border: "1px solid #0284c7",
+                                borderRadius: 4,
+                                fontSize: 14,
+                                fontWeight: 600
+                              }}
+                            />
+                            <button
+                              onClick={() => {
+                                const currentQty = Math.max(manufacturingQty, 0);
+                                const newManufacturingQty = currentQty + 1;
+                                const adjustment = newManufacturingQty - baseManufacturingQty;
+                                setManualAdjustments(prev => ({
+                                  ...prev,
+                                  [productName]: adjustment
+                                }));
+                              }}
+                              style={{
+                                background: "#28a745",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "4px",
+                                width: "28px",
+                                height: "28px",
+                                cursor: "pointer",
+                                fontSize: "16px",
+                                fontWeight: "bold",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 0
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
                         </td>
                         {/* ✅ 可用庫存欄位（只顯示）：格式為 "可用庫存 / 製造數量" */}
                         <td style={{ padding: "8px", textAlign: "center", border: "1px solid #e5e7eb", backgroundColor: "#ecfdf5", fontWeight: 600, color: availableStock > 0 ? "#059669" : "#dc2626" }}>
@@ -595,21 +661,18 @@ export default function OrderScheduling() {
                   })}
                   {/* 加總列（各客戶所有產品加總） */}
                   <tr style={{ backgroundColor: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
-                    <td style={{ padding: "8px", textAlign: "right", fontWeight: 700, border: "1px solid #e5e7eb" }}>
-                      加總
-                    </td>
                     {(() => {
                       const selectedOrders = allUnScheduledOrders.filter(o => selectedOrderIds.includes(o.id));
                       
-                      // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠左；否則按日期排序
+                      // ✅ 排序邏輯：如果勾選「蝦皮優先」，蝦皮訂單靠右；否則按日期排序
                       selectedOrders.sort((a, b) => {
                         if (shopeePriority) {
                           const isShopeeA = a.source && (a.source.includes('蝦皮') || a.source.toLowerCase().includes('shopee'));
                           const isShopeeB = b.source && (b.source.includes('蝦皮') || b.source.toLowerCase().includes('shopee'));
                           
-                          // 蝦皮訂單優先（靠左）
-                          if (isShopeeA && !isShopeeB) return -1;
-                          if (!isShopeeA && isShopeeB) return 1;
+                          // 蝦皮訂單靠右：非蝦皮的靠左，蝦皮的靠右
+                          if (isShopeeA && !isShopeeB) return 1;  // A是蝦皮，B不是 → A靠右
+                          if (!isShopeeA && isShopeeB) return -1; // A不是，B是蝦皮 → B靠右
                           
                           // 同類型內按日期排序
                           const dateA = a.order_date || a.created_at || '';
@@ -645,6 +708,7 @@ export default function OrderScheduling() {
                         );
                       });
                     })()}
+                    {/* ✅ 訂單總數量 */}
                     <td style={{ padding: "8px", textAlign: "center", fontWeight: 700, border: "1px solid #e5e7eb", backgroundColor: "#f3f4f6" }}>
                       {(() => {
                         const selectedOrders = allUnScheduledOrders.filter(o => selectedOrderIds.includes(o.id));
@@ -657,6 +721,10 @@ export default function OrderScheduling() {
                         });
                         return grandTotal;
                       })()}
+                    </td>
+                    {/* ✅ 加總（對應產品名稱列） */}
+                    <td style={{ padding: "8px", textAlign: "right", fontWeight: 700, border: "1px solid #e5e7eb" }}>
+                      加總
                     </td>
                     {/* ✅ 製造總計欄位 */}
                     <td style={{ padding: "8px", textAlign: "center", fontWeight: 700, border: "1px solid #e5e7eb", backgroundColor: "#bae6fd" }}>
