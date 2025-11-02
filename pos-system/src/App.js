@@ -7,7 +7,9 @@ import * as apiLocal from './services/api';
 import * as apiProduction from './services/api.production';
 
 console.log('🔧 POS系統環境:', process.env.NODE_ENV);
-const apiConfig = process.env.NODE_ENV === 'production' ? apiProduction : apiLocal;
+// 根據 hostname 自動選擇 API 配置
+const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const apiConfig = isLocalDev ? apiLocal : apiProduction;
 console.log('🔧 使用API配置:', apiConfig);
 
 const { productAPI, orderAPI } = apiConfig;
